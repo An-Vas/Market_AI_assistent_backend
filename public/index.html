@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI Support</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: Inter, "Segoe UI", sans-serif;
+      color: #172033;
+      background: #f3f5fa;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 48px 18px; }
+    main {
+      width: min(100%, 760px);
+      margin: 0 auto;
+      padding: 32px;
+      border: 1px solid #e3e7ef;
+      border-radius: 20px;
+      background: white;
+      box-shadow: 0 16px 48px #14213d12;
+    }
+    h1 { margin: 0; font-size: 26px; }
+    .intro { margin: 8px 0 28px; color: #68738a; line-height: 1.5; }
+    label { display: block; margin: 18px 0 7px; font-size: 14px; font-weight: 600; }
+    textarea, input, select {
+      width: 100%;
+      padding: 12px 13px;
+      border: 1px solid #d7dce7;
+      border-radius: 10px;
+      color: inherit;
+      background: white;
+      font: inherit;
+    }
+    textarea { min-height: 110px; resize: vertical; }
+    textarea:focus, input:focus { outline: 3px solid #dce7ff; border-color: #597de5; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .hint { margin: 6px 0 0; color: #7a8497; font-size: 12px; }
+    #order-picker[hidden] { display: none; }
+    .actions { display: flex; gap: 10px; margin-top: 22px; }
+    button {
+      min-height: 44px;
+      padding: 0 17px;
+      border: 0;
+      border-radius: 10px;
+      font: inherit;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button[type="submit"] { color: white; background: #315bd6; }
+    button[type="submit"]:disabled { opacity: .65; cursor: wait; }
+    #new-session { color: #34415b; background: #edf0f6; }
+    #result, #technical {
+      margin-top: 20px;
+      padding: 16px;
+      border-radius: 12px;
+      background: #f4f6fa;
+      overflow-wrap: anywhere;
+      line-height: 1.55;
+    }
+    #result { white-space: pre-wrap; }
+    #result:empty { display: none; }
+    #technical[hidden] { display: none; }
+    #technical h2 { margin: 0 0 12px; font-size: 17px; }
+    #technical dl {
+      display: grid;
+      grid-template-columns: minmax(155px, 1fr) 2fr;
+      gap: 7px 14px;
+      margin: 0;
+      font-size: 13px;
+    }
+    #technical dt { color: #68738a; }
+    #technical dd { margin: 0; overflow-wrap: anywhere; }
+    @media (max-width: 560px) {
+      body { padding: 20px 12px; }
+      main { padding: 22px 18px; }
+      .row { grid-template-columns: 1fr; gap: 0; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>AI Support</h1>
+    <p class="intro">Задайте вопрос и посмотрите ответ, распознанный intent, модели и время этапов обработки.</p>
+    <form id="support-form">
+      <label for="message">Ваш вопрос</label>
+      <textarea id="message" name="message" minlength="3" maxlength="300" required
+        placeholder="When are the next sales?"></textarea>
+      <div class="row">
+        <div>
+          <label for="user-id">User ID</label>
+          <input id="user-id" name="userId" type="number" min="1" step="1" value="5" required>
+        </div>
+        <div>
+          <label for="session-id">Session ID</label>
+          <input id="session-id" name="sessionId" type="number" min="1" step="1" required>
+        </div>
+      </div>
+      <div id="order-picker">
+        <label for="order-id">Order ID (необязательно)</label>
+        <select id="order-id" name="orderId">
+          <option value="">Без заказа</option>
+        </select>
+        <p class="hint">Можно выбрать заказ сразу. Для запроса о заказе backend проверит владельца.</p>
+      </div>
+      <p id="form-hint" class="hint">Если Order ID не выбран, но intent требует заказ, сайт попросит выбрать его.</p>
+      <div class="actions">
+        <button id="send" type="submit">Отправить вопрос</button>
+        <button id="new-session" type="button">Новая беседа</button>
+      </div>
+    </form>
+    <div id="result" role="status" aria-live="polite"></div>
+    <section id="technical" hidden aria-label="Техническая информация">
+      <h2>Техническая информация</h2>
+      <dl></dl>
+    </section>
+  </main>
+  <script>
+    const form = document.querySelector("#support-form");
+    const result = document.querySelector("#result");
+    const technical = document.querySelector("#technical");
+    const technicalList = technical.querySelector("dl");
+    const sendButton = document.querySelector("#send");
+    const sessionInput = document.querySelector("#session-id");
+    const userInput = document.querySelector("#user-id");
+    const orderSelect = document.querySelector("#order-id");
+    const formHint = document.querySelector("#form-hint");
+    const nextSessionId = () => String(Date.now() % 2000000000);
+
+    sessionInput.value = localStorage.getItem("support-session-id") || nextSessionId();
+    localStorage.setItem("support-session-id", sessionInput.value);
+
+    document.querySelector("#new-session").addEventListener("click", () => {
+      sessionInput.value = nextSessionId();
+      localStorage.setItem("support-session-id", sessionInput.value);
+      result.textContent = "Создана новая беседа.";
+      orderSelect.value = "";
+    });
+
+    async function loadOrders() {
+      const userId = Number(userInput.value);
+      orderSelect.replaceChildren(new Option("Загрузка заказов…", ""));
+      if (!Number.isSafeInteger(userId) || userId < 1) {
+        orderSelect.replaceChildren(new Option("Введите корректный User ID", ""));
+        return;
+      }
+      try {
+        const response = await fetch(`/orders?userId=${encodeURIComponent(userId)}`);
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || "Не удалось загрузить заказы.");
+        }
+        orderSelect.replaceChildren();
+        orderSelect.add(new Option("Выберите заказ", ""));
+        for (const order of data) {
+          const deliveryDate = order.deliveryDate
+            ? new Date(order.deliveryDate).toLocaleDateString()
+            : "дата не указана";
+          const label = `#${order.id} · ${order.orderComposition} · ${order.status} · ${deliveryDate}`;
+          orderSelect.add(new Option(label, String(order.id)));
+        }
+        if (data.length === 0) {
+          orderSelect.replaceChildren(new Option("Заказов для этого пользователя нет", ""));
+        }
+      } catch (error) {
+        orderSelect.replaceChildren(new Option("Ошибка загрузки заказов", ""));
+        result.textContent = `Ошибка загрузки заказов: ${error.message}`;
+      }
+    }
+
+    userInput.addEventListener("change", () => {
+      orderSelect.value = "";
+      loadOrders();
+    });
+
+    orderSelect.addEventListener("change", () => {
+      formHint.textContent = orderSelect.value
+        ? "Выбранный заказ будет отправлен вместе с вопросом; backend проверит его владельца."
+        : "Если Order ID не выбран, но intent требует заказ, сайт попросит выбрать его.";
+    });
+
+    loadOrders();
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const values = new FormData(form);
+      const body = {
+        message: String(values.get("message")).trim(),
+        userId: Number(values.get("userId")),
+        sessionId: Number(values.get("sessionId")),
+      };
+      if (orderSelect.value) {
+        body.orderId = Number(orderSelect.value);
+      }
+
+      localStorage.setItem("support-session-id", String(body.sessionId));
+      sendButton.disabled = true;
+      result.textContent = "Запрос отправляется…";
+      technical.hidden = true;
+      technicalList.replaceChildren();
+      try {
+        const response = await fetch("/support", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          const detail = typeof data.error === "string"
+            ? data.error
+            : data.error?.message || JSON.stringify(data);
+          throw new Error(detail);
+        }
+        const labels = {
+          1: "Ответ модели",
+          2: "Нужно уточнение",
+          3: "Нужен номер заказа",
+          4: "Запрос передан оператору",
+        };
+        result.textContent = `${labels[data.type] || "Ответ"}\n\n${data.text}`;
+        if (data.type === 3) {
+          formHint.textContent = "Для этого intent нужен заказ: выберите Order ID и повторно отправьте вопрос.";
+        }
+        if (data.technical) {
+          if (data.technical.classifier?.confidence < 0.85) {
+            result.textContent = `Низкая уверенность классификации: ответ сформирован по наиболее вероятному intent и может не соответствовать вопросу.\n\n${result.textContent}`;
+          }
+          const addRow = (label, value) => {
+            const term = document.createElement("dt");
+            const description = document.createElement("dd");
+            term.textContent = label;
+            description.textContent = String(value);
+            technicalList.append(term, description);
+          };
+          const info = data.technical;
+          if (info.classifier) {
+            addRow("Intent", info.classifier.intent);
+            addRow("Категория", info.classifier.category);
+            addRow("Уверенность", `${(info.classifier.confidence * 100).toFixed(2)}%`);
+            addRow("Классификатор", info.classifier.model);
+            addRow(
+              "Классификатор · запрос API",
+              `${info.classifier.request_ms.toFixed(1)} ms (${info.classifier.inference_ms} ms инференс)`,
+            );
+          } else {
+            addRow("Классификатор", "Не запускался");
+          }
+          if (info.generator) {
+            addRow("LLM", info.generator.model);
+            addRow("Поиск статьи", `${info.generator.knowledge_lookup_ms} ms`);
+            addRow(
+              "Генерация · запрос API",
+              `${info.generator.request_ms.toFixed(1)} ms (${info.generator.inference_ms} ms LLM)`,
+            );
+          } else {
+            addRow("LLM", "Не запускалась");
+          }
+          addRow(
+            "Предобработка · запрос API",
+            `${info.timings_ms.preprocessing_request.toFixed(1)} ms (${info.timings_ms.preprocessing} ms обработка)`,
+          );
+          if (info.timings_ms.knowledge_lookup === null) {
+            addRow("Поиск статьи", "Не запускался");
+          }
+          addRow("Backend · всего", `${info.timings_ms.total} ms`);
+          technical.hidden = false;
+        }
+      } catch (error) {
+        result.textContent = `Ошибка запроса: ${error.message}`;
+      } finally {
+        sendButton.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

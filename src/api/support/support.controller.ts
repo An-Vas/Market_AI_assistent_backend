@@ -27,6 +27,11 @@ export class SupportController extends BaseController implements ISupportControl
         method: 'post',
         func: this.supportRequest,
       },
+      {
+        path: '/orders',
+        method: 'get',
+        func: this.getOrders,
+      },
     ]);
   }
 
@@ -52,6 +57,26 @@ export class SupportController extends BaseController implements ISupportControl
         const answer = await this.supportService.handleSupportRequest(requestData);
         console.log(answer)
         res.send(answer);
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async getOrders(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const userId = Number(req.query.userId);
+      if (!Number.isSafeInteger(userId) || userId < 1) {
+        res.status(400).json({ error: 'A positive integer userId is required.' });
+        return;
+      }
+
+      const orders = await this.supportService.getOrdersForUser(userId);
+      res.json(orders.map((order) => ({
+        id: order.id,
+        orderComposition: order.orderComposition,
+        status: order.status,
+        deliveryDate: order.deliveryDate,
+      })));
     } catch (err) {
       next(err);
     }

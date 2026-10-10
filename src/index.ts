@@ -1,5 +1,6 @@
 import 'reflect-metadata'; // обязательно первой строкой
 import express from 'express';
+import path from 'node:path';
 
 import 'dotenv/config';
 import { container } from './container';
@@ -19,6 +20,7 @@ const app = express();
   await BdPrepareClass.prepareStartData()
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
+  app.use(express.static(path.join(__dirname, '..', 'public')));
 
   const helloController = container.get<SupportController>(TYPES.supportController);
 

@@ -8,6 +8,7 @@ export enum SessionStatus{
 
 export class SessionEntity{
     public id!: number;
+    public sessionId!: number;
     public userId!: number;
     public createDate!: Date;
     public closeDate!: Date;
@@ -19,6 +20,7 @@ export class SessionEntity{
         const res = new SessionEntity();
        
             res.id = model.id;
+            res.sessionId = model.sessionId;
             res.closeDate = model.closeDate;
             res.createDate = model.createDate;
             res.status = model.status;

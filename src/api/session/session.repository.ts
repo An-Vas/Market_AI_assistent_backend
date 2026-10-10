@@ -17,7 +17,8 @@ export class SessionRepository implements ISessionRepository {
     ) {}
 
     async getSession(sessionId: number): Promise<SessionEntity | null> {
-        const result = await Session.findByPk(sessionId, {
+        const result = await Session.findOne({
+            where: { sessionId },
             include: [
                 {
                     model: Message,

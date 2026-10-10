@@ -8,9 +8,15 @@ import { IGatewayService } from '../gateway/gateway.service.interface';
 import { MessageEntity, SenderType } from '../messages/entity/message.entity';
 import { IMessageRepository } from '../messages/message.repository.interface';
 import { SessionEntity, SessionStatus } from '../session/entity/session.entity';
-import { ResponseType, SupportResponseDto } from './dto/supportResponse.dto';
+import {
+    ResponseType,
+    SupportResponseDto,
+    SupportTechnicalInfo,
+} from './dto/supportResponse.dto';
 import { NeedOrderDetailsCategories, RequestCategory } from '../common/ml.enums';
 import { IOrderRepository } from '../order/order.repository.interface';
+import { performance } from 'node:perf_hooks';
+import { ClassificationResult } from '../gateway/gateway.service.interface';
 
 
 
@@ -26,47 +32,112 @@ export class SupportService implements ISupportService {
 
 
     async handleSupportRequest(requestData: SupportRequestDto): Promise<SupportResponseDto>{
-        requestData.message = await this.gatewayService.fixSpelling(requestData.message);
+        const started = performance.now();
+        const preprocessing = await this.gatewayService.fixSpelling(requestData.message);
+        requestData.message = preprocessing.text;
+        const technical: SupportTechnicalInfo = {
+            classifier: null,
+            generator: null,
+            timings_ms: {
+                preprocessing: preprocessing.durationMs,
+                preprocessing_request: preprocessing.requestMs,
+                classification: null,
+                knowledge_lookup: null,
+                generation: null,
+                total: 0,
+            },
+        };
         
         const session = await this.handleSession(requestData);
-        await this.saveMessage(requestData);
+        await this.saveMessage(requestData, session.id);
 
         if (session.messages && session.messages.length >= 3){
-            return await this.answerThatSentToOperator(requestData);
+            const response = await this.answerThatSentToOperator(requestData);
+            return this.completeResponse(response, technical, started);
         }
 
         let context = ((session.messages || []).map((item: any) => item.text).join('. ')) + requestData.message;
+        let orderContext: string | undefined;
 
-        const category = await this.gatewayService.getAICategory(context);
+        const classification = await this.gatewayService.getAICategory(context);
+        this.recordClassification(technical, classification);
+        const category = classification.category;
 
-        if (!category){
-          return await this.answerThatNeedMoreQuestionInfo(requestData);
+        if (classification.confidence <= 0.3 || (classification.confidence > 0.85 && !category)) { // currently classificator always returns category if succeeded
+          const response = await this.answerThatNeedMoreQuestionInfo(requestData);
+          return this.completeResponse(response, technical, started);
         } 
         
-        if (NeedOrderDetailsCategories.includes(category) && !requestData.orderId){
-          console.log("-1-")
-                return await this.answerThatNeedOrderInfo(requestData);
-        } else if (NeedOrderDetailsCategories.includes(category) && requestData.orderId) {
-           console.log("-2-")
-                const order = await this.orderRepository.getOrder(requestData.orderId, requestData.userId);
-                if (!order)  return await this.answerThatNeedOrderInfo(requestData);
-                const orderInfo = " Info about order. Composition is:  " + order.orderComposition + ". Status is: " + order.status + ". Delivery date is " + order.deliveryDate;
-                console.log(orderInfo)
-                context += orderInfo;
-        } else if (category == RequestCategory.human_agent){
-           console.log("-3-")
-                return await this.answerThatSentToOperator(requestData);
+        if (
+            classification.confidence > 0.85
+            && category !== null
+            && NeedOrderDetailsCategories.includes(category)
+        ) {
+            if (!requestData.orderId) {
+                const response = await this.answerThatNeedOrderInfo(requestData);
+                return this.completeResponse(response, technical, started);
+            }
+            const order = await this.orderRepository.getOrder(requestData.orderId, requestData.userId);
+            if (!order) {
+                const response = await this.answerThatNeedOrderInfo(requestData);
+                return this.completeResponse(response, technical, started);
+            }
+            const orderInfo = "Order composition: " + order.orderComposition + ". Status: " + order.status + ". Delivery date: " + order.deliveryDate;
+            console.log(orderInfo)
+            orderContext = orderInfo;
+            context += orderInfo;
+        } else if (
+            classification.confidence > 0.85
+            && category === RequestCategory.human_agent
+        ) {
+                const response = await this.answerThatSentToOperator(requestData);
+                return this.completeResponse(response, technical, started);
         }
  console.log("-common-")
-        return await this.answerAI(requestData, context, category);
-        
+        const response = await this.answerAI(
+            requestData,
+            context,
+            classification.intent,
+            technical,
+            orderContext,
+        );
+        return this.completeResponse(response, technical, started);
     }
 
-    async saveMessage(requestData: SupportRequestDto){
-        const msg = new MessageEntity(); 
+    async getOrdersForUser(userId: number) {
+        return this.orderRepository.getOrdersForUser(userId);
+    }
+
+    private recordClassification(
+        technical: SupportTechnicalInfo,
+        classification: ClassificationResult,
+    ): void {
+        technical.classifier = {
+            model: classification.model,
+            intent: classification.intent,
+            category: classification.categoryName,
+            confidence: classification.confidence,
+            inference_ms: classification.durationMs,
+            request_ms: classification.requestMs,
+        };
+        technical.timings_ms.classification = classification.durationMs;
+    }
+
+    private completeResponse(
+        response: SupportResponseDto,
+        technical: SupportTechnicalInfo,
+        started: number,
+    ): SupportResponseDto {
+        technical.timings_ms.total = Number((performance.now() - started).toFixed(3));
+        response.technical = technical;
+        return response;
+    }
+
+    async saveMessage(requestData: SupportRequestDto, sessionId: number){
+        const msg = new MessageEntity();
         msg.senderType = SenderType.USER;
         msg.text = requestData.message;
-        msg.sessionId = requestData.sessionId;
+        msg.sessionId = sessionId;
         const savedMessage = await this.messageRepository.saveMessage(msg);
     }
 
@@ -106,12 +177,26 @@ export class SupportService implements ISupportService {
             }
     }
 
-    async answerAI(requestData: SupportRequestDto, context: string, category: RequestCategory): Promise<SupportResponseDto>{
-        const strcategory: string = RequestCategory[category];
+    async answerAI(
+        requestData: SupportRequestDto,
+        context: string,
+        intent: string,
+        technical: SupportTechnicalInfo,
+        orderContext?: string,
+    ): Promise<SupportResponseDto>{
         await this.sessionRepository.updateStatus(requestData.sessionId, SessionStatus.CLOSED);
+        const generated = await this.gatewayService.getAIResponse(context, intent, orderContext);
+        technical.generator = {
+            model: generated.model,
+            knowledge_lookup_ms: generated.knowledgeLookupMs,
+            inference_ms: generated.llmDurationMs,
+            request_ms: generated.requestMs,
+        };
+        technical.timings_ms.knowledge_lookup = generated.knowledgeLookupMs;
+        technical.timings_ms.generation = generated.durationMs;
         return {
-            type: ResponseType.ORDERINFOREQUEST,
-            text: await this.gatewayService.getAIResponse(context, strcategory)
+            type: ResponseType.ANSWER,
+            text: generated.content,
         }
     }
   

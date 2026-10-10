@@ -23,21 +23,9 @@ npm run dev
 { orderComposition: 'pillow', status: 'created', deliveryDate: new Date(), userId: '7' }
 ```
 
-Чтобы запросы к AI успешно обрабатывались, необходимо также развернуть ml сервис из репозитория https://gitlab.com/Elitra/ai-assistant
-Краткий гайд на его развертывание: 
-Условия: изначально должен быть установлен питон pip
+Для ответов AI также запустите локальный FastAPI ML-сервис и Ollama. (Подробности в репозитории [ai-assistant](https://gitlab.com/Elitra/ai-assistant))
 
-```
-git clone https://gitlab.com/Elitra/ai-assistant.git
-cd ai-assistant
-python --version
-python -m venv .venv
-.venv\Scripts\activate
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
-uvicorn main:app --reload
-```
-Проверка что запустилось: `http://127.0.0.1:8000/health`
+Для запросов о заказах backend попросит `orderId`; прочие ответы генерирует Ollama из подходящей статьи базы знаний. `sessionId` — внешний ID сессии. Для доступа к заказу `userId` должен совпадать с его владельцем.
 
 ### Использование бека: 
 Бек поддерживает два запроса.
