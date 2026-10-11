@@ -1,0 +1,12 @@
+services:
+  backend:
+    build: .
+    container_name: market-ai-assistant-backend
+    restart: unless-stopped
+    ports:
+      - "5005:5005"
+    environment:
+      PORT: "5005"
+      FASTAPI_HOST: http://host.docker.internal:8000
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
