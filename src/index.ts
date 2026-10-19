@@ -1,6 +1,7 @@
 import 'reflect-metadata'; // обязательно первой строкой
 import express from 'express';
 import path from 'node:path';
+import swaggerUi from 'swagger-ui-express';
 
 import 'dotenv/config';
 import { container } from './container';
@@ -8,6 +9,7 @@ import { TYPES } from './types';
 import { SupportController } from './api/support/support.controller';
 import { sequelize } from './database/dbconfig';
 import { BdCongigClass as BdPrepareClass } from './database/dbprepare';
+import { openApiDocument } from './openapi';
 
 
 const app = express();
@@ -21,6 +23,7 @@ const app = express();
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
   app.use(express.static(path.join(__dirname, '..', 'public')));
+  app.use('/docs', swaggerUi.serve, swaggerUi.setup(openApiDocument));
 
   const helloController = container.get<SupportController>(TYPES.supportController);
 

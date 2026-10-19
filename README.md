@@ -13,6 +13,14 @@ npm run dev
 Для проверки, что сервис запустился, можно открыть в браузере http://localhost:5005/hello, должен возвратиться ответ hello.
 При необходимости изменить порт, на котором развернут сервер или изменить адрес МЛ-апи - изменить соответствующие параметры в сгенерированном .env файле.
 
+Документация API (Swagger UI) доступна на http://localhost:5005/docs/ —
+описание `/support`, `/orders`, схемы запросов/ответов и примеры. Пути
+описаны вручную в `src/openapi.ts`, но схемы данных (`SupportRequestDto`,
+`SupportResponseDto`, `OrderResponseDto` и т.д.) генерируются автоматически
+из реальных DTO/типов при каждом запуске — через `class-validator-jsonschema`
+(читает декораторы `class-validator`) и `ts-json-schema-generator` (читает
+TypeScript-типы напрямую). При изменении DTO схемы в Swagger обновятся сами.
+
 ### Запуск backend через Docker Compose
 
 Из каталога `Market_AI_assistent_backend` запустите backend:

@@ -8,6 +8,7 @@ import { plainToInstance } from 'class-transformer';
 import { SupportRequestDto } from './dto/supportRequest.dto';
 import { ISessionRepository } from '../session/session.repository.interface';
 import { validate } from 'class-validator';
+import { OrderResponseDto } from '../order/dto/orderResponse.dto';
 
 
 @injectable()
@@ -71,7 +72,7 @@ export class SupportController extends BaseController implements ISupportControl
       }
 
       const orders = await this.supportService.getOrdersForUser(userId);
-      res.json(orders.map((order) => ({
+      res.json(orders.map((order): OrderResponseDto => ({
         id: order.id,
         orderComposition: order.orderComposition,
         status: order.status,
