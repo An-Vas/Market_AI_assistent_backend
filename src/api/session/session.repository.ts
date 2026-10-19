@@ -40,7 +40,7 @@ export class SessionRepository implements ISessionRepository {
 
     async updateStatus(sessionId: number, status: SessionStatus){
         if (status == SessionStatus.CLOSED){
-            await Session.update({status, closeDate: Date.now}, { where: {sessionId}})
+            await Session.update({status, closeDate: new Date()}, { where: {sessionId}})
         } else {
             await Session.update({status, closeDate: null}, { where: {sessionId}})
         }
