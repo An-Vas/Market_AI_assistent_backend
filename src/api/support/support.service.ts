@@ -27,7 +27,7 @@ export class SupportService implements ISupportService {
     ) {}
 
 
-    async handleSupportRequest(requestData: SupportRequestDto, traceId: string): Promise<SupportResponseDto>{
+    async handleSupportRequest(requestData: SupportRequestDto, traceId: string, authToken: string): Promise<SupportResponseDto>{
         const started = performance.now();
         log(traceId, 'support request', { userId: requestData.userId, sessionId: requestData.sessionId });
 
@@ -62,7 +62,7 @@ export class SupportService implements ISupportService {
                 const response = await this.answerThatNeedOrderInfo(requestData);
                 return this.completeResponse(response, started, traceId);
             }
-            const order = await this.orderRepository.getOrder(requestData.orderId, requestData.userId);
+            const order = await this.orderRepository.getOrder(requestData.orderId, authToken);
             if (!order) {
                 const response = await this.answerThatNeedOrderInfo(requestData);
                 return this.completeResponse(response, started, traceId);
@@ -89,8 +89,8 @@ export class SupportService implements ISupportService {
         return this.completeResponse(response, started, traceId);
     }
 
-    async getOrdersForUser(userId: number) {
-        return this.orderRepository.getOrdersForUser(userId);
+    async getOrdersForUser(authToken: string) {
+        return this.orderRepository.getOrdersForUser(authToken);
     }
 
     private completeResponse(

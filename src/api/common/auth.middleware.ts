@@ -7,6 +7,7 @@ declare global {
   namespace Express {
     interface Request {
       userId: number;
+      ssoToken: string;
     }
   }
 }
@@ -32,6 +33,7 @@ export function requireSsoAuth(req: Request, res: Response, next: NextFunction):
       throw new Error('Token payload is missing a valid sub claim.');
     }
     req.userId = userId;
+    req.ssoToken = token;
     next();
   } catch (err) {
     log(req.traceId ?? 'unknown', 'sso token rejected', { message: (err as Error).message });

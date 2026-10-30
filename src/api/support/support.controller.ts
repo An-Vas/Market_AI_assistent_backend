@@ -51,14 +51,14 @@ export class SupportController extends BaseController implements ISupportControl
   async supportRequest(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
         const requestData = plainToInstance(SupportRequestDto, req.body);
-        requestData.userId = req.userId; // authenticated identity always wins over whatever the client sent
+        requestData.userId = req.userId;
         const errors = await validate(requestData)
         if (errors.length > 0) {
             log(req.traceId, 'support request REJECTED (validation)');
             res.status(400).json({ errors: errors.map(e => e.constraints) });
             return;
         }
-        const answer = await this.supportService.handleSupportRequest(requestData, req.traceId);
+        const answer = await this.supportService.handleSupportRequest(requestData, req.traceId, req.ssoToken);
         res.send(answer);
     } catch (err) {
       next(err);
@@ -67,7 +67,7 @@ export class SupportController extends BaseController implements ISupportControl
 
   async getOrders(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const orders = await this.supportService.getOrdersForUser(req.userId);
+      const orders = await this.supportService.getOrdersForUser(req.ssoToken);
       log(req.traceId, 'orders request', { userId: req.userId, count: orders.length });
       res.json(orders.map((order) => ({
         id: order.id,
