@@ -14,10 +14,10 @@ function marketplaceBaseUrl(): string {
 @injectable()
 export class OrderRepository implements IOrderRepository {
 
-    async getOrder(orderId: number, authToken: string): Promise<OrderEntity | null> {
+    async getOrder(orderId: number, authToken: string, traceId: string): Promise<OrderEntity | null> {
         try {
             const response = await axios.get(`${marketplaceBaseUrl()}/api/orders/${orderId}`, {
-                headers: { Authorization: `Bearer ${authToken}` },
+                headers: { Authorization: `Bearer ${authToken}`, 'X-Trace-Id': traceId },
             });
             return OrderEntity.fromApi(response.data);
         } catch (error) {
@@ -28,9 +28,9 @@ export class OrderRepository implements IOrderRepository {
         }
     }
 
-    async getOrdersForUser(authToken: string): Promise<OrderEntity[]> {
+    async getOrdersForUser(authToken: string, traceId: string): Promise<OrderEntity[]> {
         const response = await axios.get(`${marketplaceBaseUrl()}/api/orders`, {
-            headers: { Authorization: `Bearer ${authToken}` },
+            headers: { Authorization: `Bearer ${authToken}`, 'X-Trace-Id': traceId },
         });
         return (response.data as unknown[]).map((item) => OrderEntity.fromApi(item));
     }

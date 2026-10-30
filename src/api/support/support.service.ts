@@ -29,7 +29,7 @@ export class SupportService implements ISupportService {
 
     async handleSupportRequest(requestData: SupportRequestDto, traceId: string, authToken: string): Promise<SupportResponseDto>{
         const started = performance.now();
-        log(traceId, 'support request', { userId: requestData.userId, sessionId: requestData.sessionId });
+        log(traceId, 'support request', { action: 'support_request', user_id: requestData.userId, sessionId: requestData.sessionId });
 
         const preprocessing = await this.gatewayService.fixSpelling(requestData.message, traceId);
         requestData.message = preprocessing.text;
@@ -62,7 +62,7 @@ export class SupportService implements ISupportService {
                 const response = await this.answerThatNeedOrderInfo(requestData);
                 return this.completeResponse(response, started, traceId);
             }
-            const order = await this.orderRepository.getOrder(requestData.orderId, authToken);
+            const order = await this.orderRepository.getOrder(requestData.orderId, authToken, traceId);
             if (!order) {
                 const response = await this.answerThatNeedOrderInfo(requestData);
                 return this.completeResponse(response, started, traceId);
@@ -89,8 +89,8 @@ export class SupportService implements ISupportService {
         return this.completeResponse(response, started, traceId);
     }
 
-    async getOrdersForUser(authToken: string) {
-        return this.orderRepository.getOrdersForUser(authToken);
+    async getOrdersForUser(authToken: string, traceId: string) {
+        return this.orderRepository.getOrdersForUser(authToken, traceId);
     }
 
     private completeResponse(

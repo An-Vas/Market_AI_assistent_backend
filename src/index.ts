@@ -9,6 +9,7 @@ import { SupportController } from './api/support/support.controller';
 import { sequelize } from './database/dbconfig';
 import { BdCongigClass as BdPrepareClass } from './database/dbprepare';
 import { traceIdMiddleware, log } from './api/common/trace';
+import { metricsRouter } from './api/common/metrics';
 
 
 const app = express();
@@ -23,14 +24,14 @@ const app = express();
   app.use(express.urlencoded({ extended: true }));
   app.use(express.static(path.join(__dirname, '..', 'public')));
   app.use(traceIdMiddleware);
+  app.use(metricsRouter);
 
   const helloController = container.get<SupportController>(TYPES.supportController);
 
   app.use(helloController.router);
 
   app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
-    log(req.traceId ?? 'unknown', 'unhandled error', { message: err.message });
-    console.error(err);
+    log(req.traceId ?? 'unknown', 'unhandled error', { message: err.message, stack: err.stack }, 'error');
     res.status(500).json({ error: err.message });
   });
 

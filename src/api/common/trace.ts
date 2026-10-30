@@ -10,9 +10,6 @@ declare global {
   }
 }
 
-// Читает X-Trace-Id от клиента (фронтенд генерирует один на каждый вызов
-// /support) или создаёт новый — так каждый запрос можно сопоставить в логах
-// frontend/backend/ML-сервиса.
 export function traceIdMiddleware(req: Request, res: Response, next: NextFunction): void {
   const traceId = req.header('x-trace-id') || randomUUID();
   req.traceId = traceId;
@@ -20,10 +17,29 @@ export function traceIdMiddleware(req: Request, res: Response, next: NextFunctio
   next();
 }
 
-// Одна структурированная строка на важное событие — не дамп всего объекта.
-export function log(traceId: string, message: string, extra?: Record<string, unknown>): void {
-  const extraStr = extra
-    ? ' ' + Object.entries(extra).map(([key, value]) => `${key}=${value}`).join(' ')
-    : '';
-  console.log(`[${traceId}] ${message}${extraStr}`);
+const APP_VERSION = process.env.npm_package_version ?? 'unknown';
+
+export function log(
+  traceId: string,
+  message: string,
+  extra?: Record<string, unknown>,
+  level: 'info' | 'warn' | 'error' = 'info',
+): void {
+  const record = {
+    timestamp: new Date().toISOString(),
+    level,
+    service: 'backend',
+    trace_id: traceId,
+    app_version: APP_VERSION,
+    message,
+    ...extra,
+  };
+  const line = JSON.stringify(record);
+  if (level === 'error') {
+    console.error(line);
+  } else if (level === 'warn') {
+    console.warn(line);
+  } else {
+    console.log(line);
+  }
 }

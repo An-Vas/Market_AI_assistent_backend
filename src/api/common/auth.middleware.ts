@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { log } from './trace';
+import { authFailuresTotal } from './metrics';
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -17,6 +18,8 @@ export function requireSsoAuth(req: Request, res: Response, next: NextFunction):
   const token = header?.startsWith('Bearer ') ? header.slice('Bearer '.length) : undefined;
 
   if (!token) {
+    authFailuresTotal.inc();
+    log(req.traceId ?? 'unknown', 'sso token rejected', { action: 'sso_login_verify', authz_result: 'denied', reason: 'missing_token' });
     res.status(401).json({ error: 'Missing bearer token.' });
     return;
   }
@@ -34,9 +37,11 @@ export function requireSsoAuth(req: Request, res: Response, next: NextFunction):
     }
     req.userId = userId;
     req.ssoToken = token;
+    log(req.traceId ?? 'unknown', 'sso token verified', { action: 'sso_login_verify', authz_result: 'allowed', user_id: userId });
     next();
   } catch (err) {
-    log(req.traceId ?? 'unknown', 'sso token rejected', { message: (err as Error).message });
+    authFailuresTotal.inc();
+    log(req.traceId ?? 'unknown', 'sso token rejected', { action: 'sso_login_verify', authz_result: 'denied', reason: (err as Error).message });
     res.status(401).json({ error: 'Invalid or expired token.' });
   }
 }
