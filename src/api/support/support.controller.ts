@@ -9,6 +9,7 @@ import { SupportRequestDto } from './dto/supportRequest.dto';
 import { ISessionRepository } from '../session/session.repository.interface';
 import { validate } from 'class-validator';
 import { log } from '../common/trace';
+import { requireSsoAuth } from '../common/auth.middleware';
 
 
 @injectable()
@@ -27,11 +28,13 @@ export class SupportController extends BaseController implements ISupportControl
         path: '/support',
         method: 'post',
         func: this.supportRequest,
+        middlewares: [requireSsoAuth],
       },
       {
         path: '/orders',
         method: 'get',
         func: this.getOrders,
+        middlewares: [requireSsoAuth],
       },
     ]);
   }
@@ -48,6 +51,7 @@ export class SupportController extends BaseController implements ISupportControl
   async supportRequest(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
         const requestData = plainToInstance(SupportRequestDto, req.body);
+        requestData.userId = req.userId; // authenticated identity always wins over whatever the client sent
         const errors = await validate(requestData)
         if (errors.length > 0) {
             log(req.traceId, 'support request REJECTED (validation)');
@@ -63,14 +67,8 @@ export class SupportController extends BaseController implements ISupportControl
 
   async getOrders(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const userId = Number(req.query.userId);
-      if (!Number.isSafeInteger(userId) || userId < 1) {
-        res.status(400).json({ error: 'A positive integer userId is required.' });
-        return;
-      }
-
-      const orders = await this.supportService.getOrdersForUser(userId);
-      log(req.traceId, 'orders request', { userId, count: orders.length });
+      const orders = await this.supportService.getOrdersForUser(req.userId);
+      log(req.traceId, 'orders request', { userId: req.userId, count: orders.length });
       res.json(orders.map((order) => ({
         id: order.id,
         orderComposition: order.orderComposition,
