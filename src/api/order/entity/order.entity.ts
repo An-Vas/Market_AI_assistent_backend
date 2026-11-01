@@ -1,19 +1,15 @@
-
-
 export class OrderEntity {
     public id!: number;
-    public userId!: number;
     public orderComposition!: string;
-    public deliveryDate!: Date;
+    public deliveryDate!: string;
     public status!: string;
 
-    public static fromDb(model: any){
+    public static fromApi(data: any): OrderEntity {
         const res = new OrderEntity();
-        res.id = model.id;
-        res.userId  = model.userId
-        res.orderComposition = model.orderComposition
-        res.deliveryDate = model.deliveryDate
-        res.status = model.status
+        res.id = data.id;
+        res.orderComposition = data.orderComposition;
+        res.deliveryDate = data.deliveryDate;
+        res.status = data.status;
         return res;
     }
 }

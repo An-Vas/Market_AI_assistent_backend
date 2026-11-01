@@ -8,15 +8,11 @@ import { IGatewayService } from '../gateway/gateway.service.interface';
 import { MessageEntity, SenderType } from '../messages/entity/message.entity';
 import { IMessageRepository } from '../messages/message.repository.interface';
 import { SessionEntity, SessionStatus } from '../session/entity/session.entity';
-import {
-    ResponseType,
-    SupportResponseDto,
-    SupportTechnicalInfo,
-} from './dto/supportResponse.dto';
+import { ResponseType, SupportResponseDto } from './dto/supportResponse.dto';
 import { NeedOrderDetailsCategories, RequestCategory } from '../common/ml.enums';
 import { IOrderRepository } from '../order/order.repository.interface';
 import { performance } from 'node:perf_hooks';
-import { ClassificationResult } from '../gateway/gateway.service.interface';
+import { log } from '../common/trace';
 
 
 
@@ -31,43 +27,32 @@ export class SupportService implements ISupportService {
     ) {}
 
 
-    async handleSupportRequest(requestData: SupportRequestDto): Promise<SupportResponseDto>{
+    async handleSupportRequest(requestData: SupportRequestDto, traceId: string, authToken: string): Promise<SupportResponseDto>{
         const started = performance.now();
-        const preprocessing = await this.gatewayService.fixSpelling(requestData.message);
+        log(traceId, 'support request', { action: 'support_request', user_id: requestData.userId, sessionId: requestData.sessionId });
+
+        const preprocessing = await this.gatewayService.fixSpelling(requestData.message, traceId);
         requestData.message = preprocessing.text;
-        const technical: SupportTechnicalInfo = {
-            classifier: null,
-            generator: null,
-            timings_ms: {
-                preprocessing: preprocessing.durationMs,
-                preprocessing_request: preprocessing.requestMs,
-                classification: null,
-                knowledge_lookup: null,
-                generation: null,
-                total: 0,
-            },
-        };
-        
+
         const session = await this.handleSession(requestData);
         await this.saveMessage(requestData, session.id);
 
         if (session.messages && session.messages.length >= 3){
-            const response = await this.answerThatSentToOperator(requestData);
-            return this.completeResponse(response, technical, started);
+            const response = await this.answerThatSentToOperator(requestData, traceId, 'message_limit_reached');
+            return this.completeResponse(response, started, traceId);
         }
 
         let context = ((session.messages || []).map((item: any) => item.text).join('. ')) + requestData.message;
         let orderContext: string | undefined;
 
-        const classification = await this.gatewayService.getAICategory(context);
-        this.recordClassification(technical, classification);
+        const classification = await this.gatewayService.getAICategory(context, traceId);
         const category = classification.category;
 
         if (classification.confidence <= 0.3 || (classification.confidence > 0.85 && !category)) { // currently classificator always returns category if succeeded
           const response = await this.answerThatNeedMoreQuestionInfo(requestData);
-          return this.completeResponse(response, technical, started);
-        } 
-        
+          return this.completeResponse(response, started, traceId);
+        }
+
         if (
             classification.confidence > 0.85
             && category !== null
@@ -75,61 +60,49 @@ export class SupportService implements ISupportService {
         ) {
             if (!requestData.orderId) {
                 const response = await this.answerThatNeedOrderInfo(requestData);
-                return this.completeResponse(response, technical, started);
+                return this.completeResponse(response, started, traceId);
             }
-            const order = await this.orderRepository.getOrder(requestData.orderId, requestData.userId);
+            const order = await this.orderRepository.getOrder(requestData.orderId, authToken, traceId);
             if (!order) {
                 const response = await this.answerThatNeedOrderInfo(requestData);
-                return this.completeResponse(response, technical, started);
+                return this.completeResponse(response, started, traceId);
             }
             const orderInfo = "Order composition: " + order.orderComposition + ". Status: " + order.status + ". Delivery date: " + order.deliveryDate;
-            console.log(orderInfo)
+            log(traceId, 'order context resolved', { orderId: requestData.orderId });
             orderContext = orderInfo;
             context += orderInfo;
         } else if (
             classification.confidence > 0.85
             && category === RequestCategory.human_agent
         ) {
-                const response = await this.answerThatSentToOperator(requestData);
-                return this.completeResponse(response, technical, started);
+                const response = await this.answerThatSentToOperator(requestData, traceId, 'human_agent_intent');
+                return this.completeResponse(response, started, traceId);
         }
- console.log("-common-")
+
         const response = await this.answerAI(
             requestData,
             context,
             classification.intent,
-            technical,
+            traceId,
             orderContext,
         );
-        return this.completeResponse(response, technical, started);
+        return this.completeResponse(response, started, traceId);
     }
 
-    async getOrdersForUser(userId: number) {
-        return this.orderRepository.getOrdersForUser(userId);
-    }
-
-    private recordClassification(
-        technical: SupportTechnicalInfo,
-        classification: ClassificationResult,
-    ): void {
-        technical.classifier = {
-            model: classification.model,
-            intent: classification.intent,
-            category: classification.categoryName,
-            confidence: classification.confidence,
-            inference_ms: classification.durationMs,
-            request_ms: classification.requestMs,
-        };
-        technical.timings_ms.classification = classification.durationMs;
+    async getOrdersForUser(authToken: string, traceId: string) {
+        return this.orderRepository.getOrdersForUser(authToken, traceId);
     }
 
     private completeResponse(
         response: SupportResponseDto,
-        technical: SupportTechnicalInfo,
         started: number,
+        traceId: string,
     ): SupportResponseDto {
-        technical.timings_ms.total = Number((performance.now() - started).toFixed(3));
-        response.technical = technical;
+        const totalMs = Number((performance.now() - started).toFixed(3));
+        log(traceId, 'support response', {
+            type: ResponseType[response.type],
+            totalMs,
+        });
         return response;
     }
 
@@ -149,14 +122,19 @@ export class SupportService implements ISupportService {
         } else if (session.status == SessionStatus.CLOSED){
             await this.sessionRepository.updateStatus(requestData.sessionId, SessionStatus.OPEN);
         }
-        
+
       return session;
     }
-    
 
-    async answerThatSentToOperator (requestData: SupportRequestDto): Promise<SupportResponseDto>{
+
+    async answerThatSentToOperator (
+        requestData: SupportRequestDto,
+        traceId: string,
+        reason: string,
+    ): Promise<SupportResponseDto>{
         await this.sessionRepository.updateStatus(requestData.sessionId, SessionStatus.OPERATOR);
-            await this.gatewayService.sendToOperator();
+        log(traceId, 'escalated to operator', { reason });
+        await this.gatewayService.sendToOperator(traceId);
             return {
                   type: ResponseType.OPERATOR,
                   text: "Please wait for a response. Your request has been sent to the operator."
@@ -181,24 +159,16 @@ export class SupportService implements ISupportService {
         requestData: SupportRequestDto,
         context: string,
         intent: string,
-        technical: SupportTechnicalInfo,
+        traceId: string,
         orderContext?: string,
     ): Promise<SupportResponseDto>{
         await this.sessionRepository.updateStatus(requestData.sessionId, SessionStatus.CLOSED);
-        const generated = await this.gatewayService.getAIResponse(context, intent, orderContext);
-        technical.generator = {
-            model: generated.model,
-            knowledge_lookup_ms: generated.knowledgeLookupMs,
-            inference_ms: generated.llmDurationMs,
-            request_ms: generated.requestMs,
-        };
-        technical.timings_ms.knowledge_lookup = generated.knowledgeLookupMs;
-        technical.timings_ms.generation = generated.durationMs;
+        const generated = await this.gatewayService.getAIResponse(context, intent, orderContext, traceId);
         return {
             type: ResponseType.ANSWER,
             text: generated.content,
         }
     }
-  
+
 
 }

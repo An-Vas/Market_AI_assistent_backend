@@ -8,6 +8,8 @@ import { plainToInstance } from 'class-transformer';
 import { SupportRequestDto } from './dto/supportRequest.dto';
 import { ISessionRepository } from '../session/session.repository.interface';
 import { validate } from 'class-validator';
+import { log } from '../common/trace';
+import { requireSsoAuth } from '../common/auth.middleware';
 
 
 @injectable()
@@ -26,11 +28,18 @@ export class SupportController extends BaseController implements ISupportControl
         path: '/support',
         method: 'post',
         func: this.supportRequest,
+        middlewares: [requireSsoAuth],
       },
       {
         path: '/orders',
         method: 'get',
         func: this.getOrders,
+        middlewares: [requireSsoAuth],
+      },
+      {
+        path: '/logs/frontend',
+        method: 'post',
+        func: this.logFrontendError,
       },
     ]);
   }
@@ -46,16 +55,15 @@ export class SupportController extends BaseController implements ISupportControl
 
   async supportRequest(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-        console.log("Получен запрос")
-        console.log(req.body)
         const requestData = plainToInstance(SupportRequestDto, req.body);
-        const errors = await validate(requestData) 
+        requestData.userId = req.userId;
+        const errors = await validate(requestData)
         if (errors.length > 0) {
+            log(req.traceId, 'support request REJECTED (validation)', { action: 'support_request' });
             res.status(400).json({ errors: errors.map(e => e.constraints) });
             return;
         }
-        const answer = await this.supportService.handleSupportRequest(requestData);
-        console.log(answer)
+        const answer = await this.supportService.handleSupportRequest(requestData, req.traceId, req.ssoToken);
         res.send(answer);
     } catch (err) {
       next(err);
@@ -64,19 +72,33 @@ export class SupportController extends BaseController implements ISupportControl
 
   async getOrders(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const userId = Number(req.query.userId);
-      if (!Number.isSafeInteger(userId) || userId < 1) {
-        res.status(400).json({ error: 'A positive integer userId is required.' });
-        return;
-      }
-
-      const orders = await this.supportService.getOrdersForUser(userId);
+      const orders = await this.supportService.getOrdersForUser(req.ssoToken, req.traceId);
+      log(req.traceId, 'orders request', { action: 'orders_request', user_id: req.userId, count: orders.length });
       res.json(orders.map((order) => ({
         id: order.id,
         orderComposition: order.orderComposition,
         status: order.status,
         deliveryDate: order.deliveryDate,
       })));
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async logFrontendError(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { traceId, message, stack, url } = req.body ?? {};
+      if (typeof traceId !== 'string' || typeof message !== 'string' || !message.trim()) {
+        res.status(400).json({ error: 'traceId and message are required.' });
+        return;
+      }
+      log(traceId, message.slice(0, 500), {
+        service: 'frontend',
+        action: 'frontend_error',
+        url: typeof url === 'string' ? url.slice(0, 500) : undefined,
+        stack: typeof stack === 'string' ? stack.slice(0, 2000) : undefined,
+      }, 'warn');
+      res.status(204).send();
     } catch (err) {
       next(err);
     }

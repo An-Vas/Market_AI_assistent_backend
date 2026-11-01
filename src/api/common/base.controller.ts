@@ -4,6 +4,7 @@ export interface RouteDefinition {
   path: string;
   method: 'get' | 'post' | 'put' | 'delete' | 'patch';
   func: (req: Request, res: Response, next: NextFunction) => Promise<void>;
+  middlewares?: Array<(req: Request, res: Response, next: NextFunction) => void>;
 }
 
 export abstract class BaseController {
@@ -12,7 +13,7 @@ export abstract class BaseController {
   protected bindRoute(routes: RouteDefinition[]): void {
     for (const route of routes) {
       const handler = route.func.bind(this);
-      this.router[route.method](route.path, handler);
+      this.router[route.method](route.path, ...(route.middlewares ?? []), handler);
     }
   }
 

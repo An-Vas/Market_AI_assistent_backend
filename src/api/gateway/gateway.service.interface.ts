@@ -26,8 +26,8 @@ export interface PreprocessedText {
 }
 
 export interface IGatewayService {
-  getAIResponse(context: string, intent: string, orderContext?: string): Promise<GeneratedAnswer>;
-  sendToOperator(): Promise<void>;
-  getAICategory(context: string): Promise<ClassificationResult>;
-  fixSpelling(text: string): Promise<PreprocessedText>;
+  getAIResponse(context: string, intent: string, orderContext: string | undefined, traceId: string): Promise<GeneratedAnswer>;
+  sendToOperator(traceId: string): Promise<void>;
+  getAICategory(context: string, traceId: string): Promise<ClassificationResult>;
+  fixSpelling(text: string, traceId: string): Promise<PreprocessedText>;
 }

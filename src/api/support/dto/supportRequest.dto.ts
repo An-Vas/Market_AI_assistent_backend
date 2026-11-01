@@ -2,8 +2,6 @@ import {  IsInt, IsNotEmpty, IsOptional, MaxLength, MinLength } from "class-vali
 
 
 export class SupportRequestDto {
-    @IsInt()
-    @IsNotEmpty()
     public userId!: number;
     @IsNotEmpty()
     @MinLength(3)

@@ -1,28 +1,37 @@
 import { injectable } from "inversify";
-
-import { Order } from "../../database/models/order";
-import { plainToInstance } from "class-transformer";
-import { MessageEntity } from "../messages/entity/message.entity";
+import axios from "axios";
 import { IOrderRepository } from "./order.repository.interface";
 import { OrderEntity } from "./entity/order.entity";
 
+function marketplaceBaseUrl(): string {
+    const base = process.env.MARKETPLACE_BASE_URL;
+    if (!base) {
+        throw new Error('MARKETPLACE_BASE_URL is not configured.');
+    }
+    return base;
+}
+
 @injectable()
 export class OrderRepository implements IOrderRepository {
-    constructor(
-		
 
-	) {}
-
-    async getOrder(orderId: number, userId:  number): Promise<OrderEntity | null> {
-        const result = await Order.findOne( {where: {id: orderId, userId}})
-        return result ? OrderEntity.fromDb(result) : null;
+    async getOrder(orderId: number, authToken: string, traceId: string): Promise<OrderEntity | null> {
+        try {
+            const response = await axios.get(`${marketplaceBaseUrl()}/api/orders/${orderId}`, {
+                headers: { Authorization: `Bearer ${authToken}`, 'X-Trace-Id': traceId },
+            });
+            return OrderEntity.fromApi(response.data);
+        } catch (error) {
+            if (axios.isAxiosError(error) && error.response?.status === 404) {
+                return null;
+            }
+            throw error;
+        }
     }
 
-    async getOrdersForUser(userId: number): Promise<OrderEntity[]> {
-        const results = await Order.findAll({
-            where: { userId },
-            order: [['id', 'ASC']],
+    async getOrdersForUser(authToken: string, traceId: string): Promise<OrderEntity[]> {
+        const response = await axios.get(`${marketplaceBaseUrl()}/api/orders`, {
+            headers: { Authorization: `Bearer ${authToken}`, 'X-Trace-Id': traceId },
         });
-        return results.map((result) => OrderEntity.fromDb(result));
+        return (response.data as unknown[]).map((item) => OrderEntity.fromApi(item));
     }
 }

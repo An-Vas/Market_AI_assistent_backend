@@ -12,7 +12,6 @@ export class MessageRepository implements IMessageRepository {
 	) {}
 
     async saveMessage(msg: MessageEntity): Promise<MessageEntity> {
-        console.log(msg)
         const result = await Message.create({text: msg.text, sessionId: msg.sessionId, senderType: msg.senderType})
         return MessageEntity.fromDb(result);
     }

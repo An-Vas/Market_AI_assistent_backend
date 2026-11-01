@@ -8,29 +8,36 @@ import {
 } from "./gateway.service.interface";
 import axios from 'axios';
 import 'dotenv/config';
+import { log } from '../common/trace';
+
+function describeError(error: unknown): string {
+    if (axios.isAxiosError(error)) {
+        return `status=${error.response?.status ?? 'none'} ${error.message}`;
+    }
+    return error instanceof Error ? error.message : String(error);
+}
 
 export class GatewayService implements IGatewayService{
     async getAIResponse(
         context: string,
         intent: string,
-        orderContext?: string,
+        orderContext: string | undefined,
+        traceId: string,
     ): Promise<GeneratedAnswer>{
         try {
             const started = performance.now();
-            console.log('Запрос на генерацию на ' + `${process.env.FASTAPI_HOST}/assistant/generate-answer`);
-            const response = await axios.post(`${process.env.FASTAPI_HOST}/assistant/generate-answer`, {
-                text: context,
-                intent,
-                order_context: orderContext,
-            });
+            const response = await axios.post(
+                `${process.env.FASTAPI_HOST}/assistant/generate-answer`,
+                { text: context, intent, order_context: orderContext },
+                { headers: { 'X-Trace-Id': traceId } },
+            );
             const requestMs = performance.now() - started;
-            
+
             const answer = response.data?.content;
             if (typeof answer !== 'string' || !answer.trim()) {
                 throw new Error('ML service returned an empty answer');
             }
-            console.log('Ответ на запрос генерации:');
-            console.log(response.data);
+            log(traceId, 'ML generate-answer ok', { ms: Math.round(requestMs) });
             return {
                 content: answer,
                 model: response.data.model,
@@ -39,29 +46,24 @@ export class GatewayService implements IGatewayService{
                 llmDurationMs: response.data.llm_duration_ms,
                 requestMs,
             };
-            
+
         } catch (error) {
-            if (axios.isAxiosError(error)) {
-                console.log('Ошибка запроса:');
-                console.log('Status:', error.response?.status);
-                console.log('Data:', error.response?.data);
-            } else {
-                console.log(error);
-            }
+            log(traceId, 'ML generate-answer FAILED', { error: describeError(error) });
             throw error;
         }
     }
 
-    async getAICategory(context: string): Promise<ClassificationResult>{
+    async getAICategory(context: string, traceId: string): Promise<ClassificationResult>{
 
         try {
             const started = performance.now();
-            console.log('Запрос на классификацию на ' + `${process.env.FASTAPI_HOST}/assistant/classify`);
-            const response = await axios.post(`${process.env.FASTAPI_HOST}/assistant/classify`, {
-                text: context,
-            });
+            const response = await axios.post(
+                `${process.env.FASTAPI_HOST}/assistant/classify`,
+                { text: context },
+                { headers: { 'X-Trace-Id': traceId } },
+            );
             const requestMs = performance.now() - started;
-            
+
             const foundIntent = response.data?.intent;
             const confidence = response.data?.confidence;
             if (
@@ -75,6 +77,11 @@ export class GatewayService implements IGatewayService{
             }
             const category = RequestCategory[foundIntent as keyof typeof RequestCategory];
             const recognizedCategory = typeof category === 'number' ? category : null;
+            log(traceId, 'ML classify ok', {
+                intent: foundIntent,
+                confidence: confidence.toFixed(2),
+                ms: Math.round(requestMs),
+            });
             return {
                 category: recognizedCategory,
                 categoryName: response.data.category,
@@ -84,54 +91,41 @@ export class GatewayService implements IGatewayService{
                 durationMs: response.data.duration_ms,
                 requestMs,
             };
-            
+
         } catch (error) {
-            if (axios.isAxiosError(error)) {
-                console.log('Ошибка запроса:');
-                console.log('Status:', error.response?.status);
-                console.log('Data:', error.response?.data);
-            } else {
-                console.log(error);
-            }
+            log(traceId, 'ML classify FAILED', { error: describeError(error) });
             throw error;
         }
     }
 
-    async fixSpelling(text: string): Promise<PreprocessedText>{
+    async fixSpelling(text: string, traceId: string): Promise<PreprocessedText>{
         try {
             const started = performance.now();
-             console.log('Запрос на исправление орфографии на ' + `${process.env.FASTAPI_HOST}/assistant/process`);
-            const response = await axios.post(`${process.env.FASTAPI_HOST}/assistant/process`, {
-                text: text,
-            });
+            const response = await axios.post(
+                `${process.env.FASTAPI_HOST}/assistant/process`,
+                { text: text },
+                { headers: { 'X-Trace-Id': traceId } },
+            );
             const requestMs = performance.now() - started;
 
-            console.log('Ответ на запрос исправления орфографии:');
-            console.log(response.data);
-            
             if (typeof response.data?.processed !== 'string') {
                 throw new Error('ML service returned invalid preprocessing result');
             }
+            log(traceId, 'ML process ok', { ms: Math.round(requestMs) });
             return {
                 text: response.data.processed,
                 durationMs: response.data.duration_ms,
                 requestMs,
             };
-            
+
         } catch (error) {
-            if (axios.isAxiosError(error)) {
-                console.log('Ошибка запроса:');
-                console.log('Status:', error.response?.status);
-                console.log('Data:', error.response?.data);
-            } else {
-                console.log(error);
-            }
+            log(traceId, 'ML process FAILED', { error: describeError(error) });
             throw error;
         }
     }
 
-    async sendToOperator(): Promise<void>{
-        console.log("Передано оператору")
+    async sendToOperator(traceId: string): Promise<void>{
+        log(traceId, 'operator notified');
     }
 
 }
