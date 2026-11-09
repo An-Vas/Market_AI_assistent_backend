@@ -39,7 +39,7 @@ const app = express();
 
   app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
     log(req.traceId ?? 'unknown', 'unhandled error', { message: err.message, stack: err.stack }, 'error');
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error.' });
   });
 
   if (!process.env.PORT) {
