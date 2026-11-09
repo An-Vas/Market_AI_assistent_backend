@@ -7,4 +7,5 @@ export const TYPES = {
     messageRepository: Symbol.for('messageRepository'),
     gatewayService: Symbol.for('gatewayService'),
     orderRepository: Symbol.for('orderRepository'),
+    categoryThresholdRepository: Symbol.for('categoryThresholdRepository'),
 }

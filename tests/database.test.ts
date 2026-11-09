@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import 'reflect-metadata';
 import { OrderRepository } from '../src/api/order/order.repository';
 
-test('OrderRepository forwards the caller\'s token to the marketplace and maps 404s to null', async () => {
+test('OrderRepository передаёт токен вызывающего в маркетплейс и превращает 404 в null', async () => {
   const originalGet = axios.get;
   const previousBase = process.env.MARKETPLACE_BASE_URL;
   process.env.MARKETPLACE_BASE_URL = 'http://127.0.0.1:54321';

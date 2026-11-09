@@ -15,7 +15,7 @@ function tokenFor(userId: number): string {
   return jwt.sign({ sub: userId }, SSO_SECRET, { algorithm: 'HS256', expiresIn: '1h' });
 }
 
-test('attack-list checks against a real server: session IDOR, userId spoofing, SQL/XSS/prototype-pollution payloads, log hygiene', async (t) => {
+test('проверки из списка атак на реальном сервере: IDOR сессии, подмена userId, SQL/XSS/prototype-pollution пейлоады, гигиена логов', async (t) => {
   const original = process.cwd();
   const dir = mkdtempSync(join(tmpdir(), 'market-security-'));
   process.chdir(dir);
@@ -72,6 +72,7 @@ test('attack-list checks against a real server: session IDOR, userId spoofing, S
     gateway as any,
     new MessageRepository(),
     orders as any,
+    { getRequiredConfidence: async () => 0.85 } as any,
   );
 
   const controller = new SupportController(service as any);
@@ -92,7 +93,7 @@ test('attack-list checks against a real server: session IDOR, userId spoofing, S
   const tokenB = tokenFor(502);
 
   try {
-    await t.test('row 9-12 (smoke at HTTP level): /support requires a valid SSO token', async () => {
+    await t.test('строка 9-12 (smoke-проверка на уровне HTTP): /support требует валидный SSO-токен', async () => {
       const noToken = await fetch(`${base}/support`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -108,7 +109,7 @@ test('attack-list checks against a real server: session IDOR, userId spoofing, S
       assert.equal(badToken.status, 401);
     });
 
-    await t.test('row 4: user B cannot read or write into user A\'s session via its sessionId', async () => {
+    await t.test('строка 4: пользователь Б не может читать или писать в сессию пользователя А по её sessionId', async () => {
       const CONTROL_PHRASE = 'control-phrase-xyz-9001';
       const SESSION_ID = 9001;
 
@@ -134,7 +135,7 @@ test('attack-list checks against a real server: session IDOR, userId spoofing, S
       assert.ok(!texts.some((text: string) => text.includes("trying to read")));
     });
 
-    await t.test('row 6: userId in the body is ignored in favour of the SSO token\'s identity', async () => {
+    await t.test('строка 6: userId в теле запроса игнорируется в пользу личности из SSO-токена', async () => {
       const SESSION_ID = 9002;
       const response = await fetch(`${base}/support`, {
         method: 'POST',
@@ -147,7 +148,7 @@ test('attack-list checks against a real server: session IDOR, userId spoofing, S
       assert.equal(stored?.get('userId'), 501);
     });
 
-    await t.test('row 17: SQL injection in message/sessionId/orderId does not execute and sessions table survives', async () => {
+    await t.test('строка 17: SQL-инъекция в message/sessionId/orderId не выполняется, таблица sessions не повреждается', async () => {
       const SESSION_ID = 9003;
       const payload = "'; DROP TABLE sessions; --";
 
@@ -170,7 +171,7 @@ test('attack-list checks against a real server: session IDOR, userId spoofing, S
       assert.equal(sqlLikeIds.status, 400);
     });
 
-    await t.test('row 18: out-of-range/wrong-type sessionId/orderId are rejected with 400, not a crash', async () => {
+    await t.test('строка 18: sessionId/orderId вне диапазона или неверного типа отклоняются с 400, без падения', async () => {
       const bodies = [
         { message: 'hi', sessionId: -1 },
         { message: 'hi', sessionId: 0 },
@@ -190,7 +191,7 @@ test('attack-list checks against a real server: session IDOR, userId spoofing, S
       }
     });
 
-    await t.test('row 19: control characters / NUL bytes in message do not crash the request', async () => {
+    await t.test('строка 19: управляющие символы / NUL-байты в message не приводят к падению запроса', async () => {
       const SESSION_ID = 9005;
       const withControlChars = `hi${String.fromCharCode(7)}${String.fromCharCode(27)}bye`;
       const withNulByte = `hi${String.fromCharCode(0)}bye`;
@@ -205,7 +206,7 @@ test('attack-list checks against a real server: session IDOR, userId spoofing, S
       }
     });
 
-    await t.test('row 20: malformed JSON types in message are rejected with 400, not a 500', async () => {
+    await t.test('строка 20: некорректные типы JSON в message отклоняются с 400, а не с 500', async () => {
       const bodies = [
         { message: {}, sessionId: 9006 },
         { message: [], sessionId: 9007 },
@@ -229,7 +230,7 @@ test('attack-list checks against a real server: session IDOR, userId spoofing, S
       assert.ok([400, 500].includes(rawArray.status));
     });
 
-    await t.test('row 21: __proto__ / constructor.prototype keys in the body do not pollute Object.prototype', async () => {
+    await t.test('строка 21: ключи __proto__ / constructor.prototype в теле запроса не загрязняют Object.prototype', async () => {
       const rawBody =
         '{"message":"prototype pollution attempt","sessionId":9009,' +
         '"__proto__":{"polluted":true},' +
@@ -247,7 +248,7 @@ test('attack-list checks against a real server: session IDOR, userId spoofing, S
       assert.equal(Object.prototype.hasOwnProperty.call(Object.prototype, 'polluted'), false);
     });
 
-    await t.test('row 22 (backend half): an HTML/script payload in message is stored as a literal string', async () => {
+    await t.test('строка 22 (часть бэкенда): HTML/script-пейлоад в message сохраняется как обычная строка', async () => {
       const SESSION_ID = 9010;
       const payload = '<script>alert(1)</script>';
 
@@ -262,7 +263,7 @@ test('attack-list checks against a real server: session IDOR, userId spoofing, S
       assert.equal((stored as any).messages[0].text, payload);
     });
 
-    await t.test('row 13: no SSO token or secret leaks into application logs', async () => {
+    await t.test('строка 13: SSO-токен и секрет не попадают в логи приложения', async () => {
       logLines.length = 0;
       const token = tokenFor(503);
       await fetch(`${base}/support`, {

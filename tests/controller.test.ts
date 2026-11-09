@@ -65,7 +65,7 @@ async function withServer(
   }
 }
 
-test('HTTP hello returns the expected response', async () => {
+test('HTTP /hello возвращает ожидаемый ответ', async () => {
   await withServer(async (base) => {
     const response = await fetch(`${base}/hello`);
 
@@ -74,7 +74,7 @@ test('HTTP hello returns the expected response', async () => {
   });
 });
 
-test('HTTP support requires a valid SSO token and validates the body before invoking the service', async () => {
+test('HTTP /support требует валидный SSO-токен и валидирует тело перед вызовом сервиса', async () => {
   await withServer(async (base, calls) => {
     const noToken = await fetch(`${base}/support`, {
       method: 'POST',
@@ -120,7 +120,7 @@ test('HTTP support requires a valid SSO token and validates the body before invo
   });
 });
 
-test('HTTP orders requires a valid SSO token, forwards it to the service and returns only selected fields', async () => {
+test('HTTP /orders требует валидный SSO-токен, передаёт его в сервис и возвращает только разрешённые поля', async () => {
   await withServer(async (base, calls) => {
     const noToken = await fetch(`${base}/orders`);
     assert.equal(noToken.status, 401);

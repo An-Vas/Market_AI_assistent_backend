@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import 'reflect-metadata';
 
-test('SQLite stores sessions and messages and updates session status', async () => {
+test('SQLite сохраняет сессии и сообщения и обновляет статус сессии', async () => {
   const original = process.cwd();
   const dir = mkdtempSync(join(tmpdir(), 'market-session-'));
 

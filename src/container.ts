@@ -14,6 +14,8 @@ import { GatewayService } from './api/gateway/gateway.service';
 import { IGatewayService } from './api/gateway/gateway.service.interface';
 import { IOrderRepository } from './api/order/order.repository.interface';
 import { OrderRepository } from './api/order/order.repository';
+import { ICategoryThresholdRepository } from './api/common/categoryThreshold.repository.interface';
+import { CategoryThresholdRepository } from './api/common/categoryThreshold.repository';
 
 const container = new Container();
 
@@ -26,6 +28,7 @@ container.bind<ISessionRepository>(TYPES.sessionRepository).to(SessionRepository
 container.bind<IGatewayService>(TYPES.gatewayService).to(GatewayService);
 container.bind<IMessageRepository>(TYPES.messageRepository).to(MessageRepository);
 container.bind<IOrderRepository>(TYPES.orderRepository).to(OrderRepository);
+container.bind<ICategoryThresholdRepository>(TYPES.categoryThresholdRepository).to(CategoryThresholdRepository);
 
 
 export { container };

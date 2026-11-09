@@ -35,19 +35,19 @@ function run(authorizationHeader: string | undefined) {
   return { req, res, nextCalled };
 }
 
-test('requireSsoAuth rejects a request with no Authorization header', () => {
+test('requireSsoAuth отклоняет запрос без заголовка Authorization', () => {
   const { res, nextCalled } = run(undefined);
   assert.equal(res.statusCode, 401);
   assert.equal(nextCalled, false);
 });
 
-test('requireSsoAuth rejects a non-Bearer Authorization header', () => {
+test('requireSsoAuth отклоняет заголовок Authorization не типа Bearer', () => {
   const { res, nextCalled } = run('Basic dXNlcjpwYXNz');
   assert.equal(res.statusCode, 401);
   assert.equal(nextCalled, false);
 });
 
-test('requireSsoAuth rejects an expired token', () => {
+test('requireSsoAuth отклоняет просроченный токен', () => {
   const expired = jwt.sign(
     { sub: 501 },
     SECRET,
@@ -58,7 +58,7 @@ test('requireSsoAuth rejects an expired token', () => {
   assert.equal(nextCalled, false);
 });
 
-test('requireSsoAuth rejects a token signed with the wrong secret', () => {
+test('requireSsoAuth отклоняет токен, подписанный другим секретом', () => {
   const forged = jwt.sign(
     { sub: 501 },
     'a-completely-different-secret',
@@ -69,7 +69,7 @@ test('requireSsoAuth rejects a token signed with the wrong secret', () => {
   assert.equal(nextCalled, false);
 });
 
-test('requireSsoAuth rejects a token signed with a different algorithm', () => {
+test('requireSsoAuth отклоняет токен, подписанный другим алгоритмом', () => {
   const wrongAlg = jwt.sign(
     { sub: 501 },
     SECRET,
@@ -80,7 +80,7 @@ test('requireSsoAuth rejects a token signed with a different algorithm', () => {
   assert.equal(nextCalled, false);
 });
 
-test('requireSsoAuth rejects a forged alg:none token', () => {
+test('requireSsoAuth отклоняет подделанный токен с alg:none', () => {
   const base64url = (obj: unknown) =>
     Buffer.from(JSON.stringify(obj)).toString('base64url');
   const forged = `${base64url({ alg: 'none', typ: 'JWT' })}.${base64url({ sub: 501 })}.`;
@@ -89,7 +89,7 @@ test('requireSsoAuth rejects a forged alg:none token', () => {
   assert.equal(nextCalled, false);
 });
 
-test('requireSsoAuth rejects a token with a non-positive or non-numeric sub claim', () => {
+test('requireSsoAuth отклоняет токен с неположительным или нечисловым sub', () => {
   for (const sub of [0, -1, 'five', undefined]) {
     const token = jwt.sign({ sub }, SECRET, { algorithm: 'HS256', expiresIn: '1h' });
     const { res, nextCalled } = run(`Bearer ${token}`);
@@ -98,7 +98,7 @@ test('requireSsoAuth rejects a token with a non-positive or non-numeric sub clai
   }
 });
 
-test('requireSsoAuth accepts a validly signed, current token and sets req.userId from it', () => {
+test('requireSsoAuth принимает валидный токен и берёт req.userId из него', () => {
   const token = jwt.sign({ sub: 501 }, SECRET, { algorithm: 'HS256', expiresIn: '1h' });
   const { req, res, nextCalled } = run(`Bearer ${token}`);
   assert.equal(res.statusCode, undefined);

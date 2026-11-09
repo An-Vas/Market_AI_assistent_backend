@@ -11,6 +11,7 @@ import { SessionEntity, SessionStatus } from '../session/entity/session.entity';
 import { ResponseType, SupportResponseDto } from './dto/supportResponse.dto';
 import { NeedOrderDetailsCategories, RequestCategory } from '../common/ml.enums';
 import { IOrderRepository } from '../order/order.repository.interface';
+import { ICategoryThresholdRepository } from '../common/categoryThreshold.repository.interface';
 import { performance } from 'node:perf_hooks';
 import { log } from '../common/trace';
 import { escalationsTotal, supportResponsesTotal } from '../common/metrics';
@@ -25,7 +26,8 @@ export class SupportService implements ISupportService {
         @inject(TYPES.sessionRepository) private sessionRepository: ISessionRepository,
         @inject(TYPES.gatewayService) private gatewayService: IGatewayService,
         @inject(TYPES.messageRepository) private messageRepository: IMessageRepository,
-        @inject(TYPES.orderRepository) private orderRepository: IOrderRepository
+        @inject(TYPES.orderRepository) private orderRepository: IOrderRepository,
+        @inject(TYPES.categoryThresholdRepository) private categoryThresholdRepository: ICategoryThresholdRepository
     ) {}
 
 
@@ -50,16 +52,19 @@ export class SupportService implements ISupportService {
         const classification = await this.gatewayService.getAICategory(context, traceId);
         const category = classification.category;
 
-        if (classification.confidence <= 0.3 || (classification.confidence > 0.85 && !category)) { // currently classificator always returns category if succeeded
+        // Порог уверенности настраивается в БД (category_confidence_thresholds)
+        // по интенту — чем дороже ошибиться в категории, тем выше нужен confidence,
+        // чтобы отвечать напрямую, а не уточнять вопрос.
+        const requiredConfidence = category !== null
+            ? await this.categoryThresholdRepository.getRequiredConfidence(category)
+            : 1;
+
+        if (category === null || classification.confidence < requiredConfidence) {
           const response = await this.answerThatNeedMoreQuestionInfo(requestData);
           return this.completeResponse(response, started, traceId);
         }
 
-        if (
-            classification.confidence > 0.85
-            && category !== null
-            && NeedOrderDetailsCategories.includes(category)
-        ) {
+        if (NeedOrderDetailsCategories.includes(category)) {
             if (!requestData.orderId) {
                 const response = await this.answerThatNeedOrderInfo(requestData);
                 return this.completeResponse(response, started, traceId);
@@ -73,10 +78,7 @@ export class SupportService implements ISupportService {
             log(traceId, 'order context resolved', { orderId: requestData.orderId });
             orderContext = orderInfo;
             context += orderInfo;
-        } else if (
-            classification.confidence > 0.85
-            && category === RequestCategory.human_agent
-        ) {
+        } else if (category === RequestCategory.human_agent) {
                 const response = await this.answerThatSentToOperator(requestData, traceId, 'human_agent_intent');
                 return this.completeResponse(response, started, traceId);
         }

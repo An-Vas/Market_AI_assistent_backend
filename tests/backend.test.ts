@@ -12,7 +12,11 @@ import { SupportService } from '../src/api/support/support.service';
 
 const valid = { message: 'hello', userId: 5, sessionId: 10 };
 
-test('DTO validates required fields, types and message length', async () => {
+// Фиксированный порог для юнит-тестов — реальные пороги по категориям проверяются
+// отдельно, через categoryThreshold.repository.test.ts.
+const fixedThresholdRepository = { getRequiredConfidence: async () => 0.85 };
+
+test('DTO проверяет обязательные поля, типы и длину сообщения', async () => {
   const invalidCases = [
     {},
     { ...valid, userId: '5' },
@@ -102,12 +106,13 @@ function setup(
     gateway as any,
     { saveMessage: async () => {} } as any,
     orders as any,
+    fixedThresholdRepository as any,
   );
 
   return { service, calls };
 }
 
-test('low confidence requests clarification without generation', async () => {
+test('при низкой уверенности запрашивается уточнение без генерации', async () => {
   const { service, calls } = setup(RequestCategory.track_order, 0.3);
 
   const result = await service.handleSupportRequest({ ...valid } as any);
@@ -116,7 +121,7 @@ test('low confidence requests clarification without generation', async () => {
   assert.ok(!calls.some((call) => call[0] === 'generate'));
 });
 
-test('order intent requires an order and checks ownership before generation', async () => {
+test('для интента заказа требуется orderId и проверяется владение перед генерацией', async () => {
   const missing = setup(RequestCategory.track_order, 0.9);
 
   assert.equal(
@@ -165,7 +170,7 @@ test('order intent requires an order and checks ownership before generation', as
   );
 });
 
-test('order ownership check gives identical responses for a foreign order and a non-existent one', async () => {
+test('строка 8: проверка владения заказом даёт одинаковый ответ для чужого и несуществующего заказа', async () => {
   const foreign = setup(RequestCategory.track_order, 0.9);
   const nonexistent = setup(RequestCategory.track_order, 0.9);
 
@@ -181,7 +186,7 @@ test('order ownership check gives identical responses for a foreign order and a 
   assert.deepEqual(foreignResponse, nonexistentResponse);
 });
 
-test('human agent and message threshold send to operator', async () => {
+test('интент human_agent и лимит сообщений передают диалог оператору', async () => {
   const fixtures = [
     setup(RequestCategory.human_agent, 0.9),
     setup(RequestCategory.track_order, 0.9, null, [
@@ -201,7 +206,7 @@ test('human agent and message threshold send to operator', async () => {
   }
 });
 
-test('ML gateway rejects malformed responses and propagates failures', async () => {
+test('ML-gateway отклоняет некорректные ответы и передаёт ошибки дальше', async () => {
   const original = axios.post;
 
   try {
@@ -235,12 +240,15 @@ test('ML gateway rejects malformed responses and propagates failures', async () 
   }
 });
 
-test('classification confidence boundaries follow current routing rules', async () => {
+test('границы уверенности классификации соответствуют текущим правилам маршрутизации', async () => {
   const cases = [
     [0, ResponseType.DETAILSREQUEST],
     [0.3, ResponseType.DETAILSREQUEST],
-    [0.3001, ResponseType.ANSWER],
-    [0.85, ResponseType.ANSWER],
+    // Ниже порога категории (0.85 для track_order, ORDER = Высокая стоимость ошибки) —
+    // уточнение, а не угадывание ответа, даже если confidence уже выше старого 0.3.
+    [0.3001, ResponseType.DETAILSREQUEST],
+    // confidence достаточен, но orderId не передан — запрос номера заказа.
+    [0.85, ResponseType.ORDERINFOREQUEST],
     [0.8501, ResponseType.ORDERINFOREQUEST],
   ] as const;
 
@@ -251,6 +259,18 @@ test('classification confidence boundaries follow current routing rules', async 
     assert.equal(result.type, expected, `confidence=${confidence}`);
   }
 
+  // При достаточной уверенности и переданном orderId для order-категории — реальный ответ.
+  const withOrder = setup(RequestCategory.track_order, 0.9, {
+    orderComposition: 'book',
+    status: 'created',
+    deliveryDate: 'tomorrow',
+  });
+  const withOrderResult = await withOrder.service.handleSupportRequest({
+    ...valid,
+    orderId: 9,
+  } as any);
+  assert.equal(withOrderResult.type, ResponseType.ANSWER);
+
   const unknown = setup(null, 0.9);
   const result = await unknown.service.handleSupportRequest({
     ...valid,
@@ -259,7 +279,7 @@ test('classification confidence boundaries follow current routing rules', async 
   assert.equal(result.type, ResponseType.DETAILSREQUEST);
 });
 
-test('session creation and reopening use the supplied identifiers', async () => {
+test('создание и переоткрытие сессии использует переданные идентификаторы', async () => {
   const { SessionStatus } = await import(
     '../src/api/session/entity/session.entity'
   );
@@ -285,6 +305,7 @@ test('session creation and reopening use the supplied identifiers', async () => 
     {} as any,
     {} as any,
     {} as any,
+    {} as any,
   );
 
   await service.handleSession({ ...valid } as any);
@@ -307,7 +328,7 @@ test('session creation and reopening use the supplied identifiers', async () => 
   assert.equal(calls.length, 2);
 });
 
-test('ML gateway sends expected payloads and maps successful responses', async () => {
+test('ML-gateway отправляет ожидаемые тела запросов и преобразует успешные ответы', async () => {
   const original = axios.post;
   const previous = process.env.FASTAPI_HOST;
   const calls: any[] = [];
