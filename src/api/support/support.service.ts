@@ -115,12 +115,12 @@ export class SupportService implements ISupportService {
     }
 
     async handleSession(requestData: SupportRequestDto): Promise<SessionEntity>{
-      let session = await this.sessionRepository.getSession(requestData.sessionId);
+      let session = await this.sessionRepository.getSession(requestData.sessionId, requestData.userId);
 
         if (!session) {
             session = await this.sessionRepository.createSession(requestData.sessionId, requestData.userId)
         } else if (session.status == SessionStatus.CLOSED){
-            await this.sessionRepository.updateStatus(requestData.sessionId, SessionStatus.OPEN);
+            await this.sessionRepository.updateStatus(requestData.sessionId, requestData.userId, SessionStatus.OPEN);
         }
 
       return session;
@@ -132,7 +132,7 @@ export class SupportService implements ISupportService {
         traceId: string,
         reason: string,
     ): Promise<SupportResponseDto>{
-        await this.sessionRepository.updateStatus(requestData.sessionId, SessionStatus.OPERATOR);
+        await this.sessionRepository.updateStatus(requestData.sessionId, requestData.userId, SessionStatus.OPERATOR);
         log(traceId, 'escalated to operator', { reason });
         await this.gatewayService.sendToOperator(traceId);
             return {
@@ -162,7 +162,7 @@ export class SupportService implements ISupportService {
         traceId: string,
         orderContext?: string,
     ): Promise<SupportResponseDto>{
-        await this.sessionRepository.updateStatus(requestData.sessionId, SessionStatus.CLOSED);
+        await this.sessionRepository.updateStatus(requestData.sessionId, requestData.userId, SessionStatus.CLOSED);
         const generated = await this.gatewayService.getAIResponse(context, intent, orderContext, traceId);
         return {
             type: ResponseType.ANSWER,

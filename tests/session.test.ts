@@ -31,7 +31,7 @@ test('SQLite stores sessions and messages and updates session status', async () 
     const sessions = new SessionRepository();
     const messages = new MessageRepository();
 
-    assert.equal(await sessions.getSession(101), null);
+    assert.equal(await sessions.getSession(101, 5), null);
 
     const created = await sessions.createSession(101, 5);
     assert.equal(created.userId, 5);
@@ -44,14 +44,18 @@ test('SQLite stores sessions and messages and updates session status', async () 
 
     assert.equal(saved.text, 'hello');
 
-    const loaded = await sessions.getSession(101);
+    const loaded = await sessions.getSession(101, 5);
     assert.equal(loaded?.messages.length, 1);
     assert.equal(loaded?.messages[0].text, 'hello');
 
-    await sessions.updateStatus(101, SessionStatus.OPERATOR);
+    assert.equal(await sessions.getSession(101, 7), null);
+    await sessions.updateStatus(101, 7, SessionStatus.OPERATOR);
+    assert.equal((await sessions.getSession(101, 5))?.status, SessionStatus.OPEN);
+
+    await sessions.updateStatus(101, 5, SessionStatus.OPERATOR);
 
     assert.equal(
-      (await sessions.getSession(101))?.status,
+      (await sessions.getSession(101, 5))?.status,
       SessionStatus.OPERATOR,
     );
   } finally {

@@ -280,7 +280,7 @@ test('session creation and reopening use the supplied identifiers', async () => 
   });
 
   await service.handleSession({ ...valid } as any);
-  assert.deepEqual(calls[1], ['update', 10, SessionStatus.OPEN]);
+  assert.deepEqual(calls[1], ['update', 10, 5, SessionStatus.OPEN]);
 
   session.getSession = async () => ({
     id: 1,

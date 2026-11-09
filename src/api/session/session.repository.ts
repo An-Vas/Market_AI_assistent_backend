@@ -16,9 +16,9 @@ export class SessionRepository implements ISessionRepository {
         
     ) {}
 
-    async getSession(sessionId: number): Promise<SessionEntity | null> {
+    async getSession(sessionId: number, userId: number): Promise<SessionEntity | null> {
         const result = await Session.findOne({
-            where: { sessionId },
+            where: { sessionId, userId },
             include: [
                 {
                     model: Message,
@@ -38,12 +38,12 @@ export class SessionRepository implements ISessionRepository {
           return SessionEntity.fromDb(result);
     }
 
-    async updateStatus(sessionId: number, status: SessionStatus){
+    async updateStatus(sessionId: number, userId: number, status: SessionStatus){
         if (status == SessionStatus.CLOSED){
-            await Session.update({status, closeDate: new Date()}, { where: {sessionId}})
+            await Session.update({status, closeDate: new Date()}, { where: {sessionId, userId}})
         } else {
-            await Session.update({status, closeDate: null}, { where: {sessionId}})
+            await Session.update({status, closeDate: null}, { where: {sessionId, userId}})
         }
-        
+
     }
 }
