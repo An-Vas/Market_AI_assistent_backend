@@ -9,15 +9,20 @@ import { MessageEntity, SenderType } from '../messages/entity/message.entity';
 import { IMessageRepository } from '../messages/message.repository.interface';
 import { SessionEntity, SessionStatus } from '../session/entity/session.entity';
 import { ResponseType, SupportResponseDto } from './dto/supportResponse.dto';
-import { NeedOrderDetailsCategories, RequestCategory } from '../common/ml.enums';
+import { ActionOnlyCategories, NeedOrderDetailsCategories, RequestCategory } from '../common/ml.enums';
 import { IOrderRepository } from '../order/order.repository.interface';
 import { ICategoryThresholdRepository } from '../common/categoryThreshold.repository.interface';
 import { performance } from 'node:perf_hooks';
 import { log } from '../common/trace';
 import { escalationsTotal, supportResponsesTotal } from '../common/metrics';
 import { SessionAccessDeniedError } from './support.errors';
+import { UnsupportedLanguageError } from '../gateway/gateway.errors';
 
-
+// Короткий текст на другом языке (приветствие и т.п.) — ничего не поясняет,
+// проще попросить переформулировать на английском. Развёрнутый запрос на
+// другом языке — это реальная просьба за помощью, с которой лучше разберётся
+// оператор, чем молчаливый отказ.
+const NON_ENGLISH_ESCALATION_LENGTH = 15;
 
 @injectable()
 export class SupportService implements ISupportService {
@@ -35,10 +40,23 @@ export class SupportService implements ISupportService {
         const started = performance.now();
         log(traceId, 'support request', { action: 'support_request', user_id: requestData.userId, sessionId: requestData.sessionId });
 
-        const preprocessing = await this.gatewayService.fixSpelling(requestData.message, traceId);
+        const session = await this.handleSession(requestData);
+
+        let preprocessing;
+        try {
+            preprocessing = await this.gatewayService.fixSpelling(requestData.message, traceId);
+        } catch (error) {
+            if (error instanceof UnsupportedLanguageError) {
+                await this.saveMessage(requestData, session.id);
+                const response = requestData.message.length > NON_ENGLISH_ESCALATION_LENGTH
+                    ? await this.answerThatSentToOperator(requestData, traceId, 'unsupported_language')
+                    : await this.answerThatNeedEnglishQuestion(requestData);
+                return this.completeResponse(response, started, traceId);
+            }
+            throw error;
+        }
         requestData.message = preprocessing.text;
 
-        const session = await this.handleSession(requestData);
         await this.saveMessage(requestData, session.id);
 
         if (session.messages && session.messages.length >= 3){
@@ -62,6 +80,11 @@ export class SupportService implements ISupportService {
         if (category === null || classification.confidence < requiredConfidence) {
           const response = await this.answerThatNeedMoreQuestionInfo(requestData);
           return this.completeResponse(response, started, traceId);
+        }
+
+        if (ActionOnlyCategories.includes(category)) {
+            const response = await this.answerThatSentToOperator(requestData, traceId, 'action_not_supported');
+            return this.completeResponse(response, started, traceId);
         }
 
         if (NeedOrderDetailsCategories.includes(category)) {
@@ -162,6 +185,13 @@ export class SupportService implements ISupportService {
             return {
                   type: ResponseType.DETAILSREQUEST,
                   text: "Please rephrase your question or provide more details."
+            }
+    }
+
+    async answerThatNeedEnglishQuestion (requestData: SupportRequestDto): Promise<SupportResponseDto>{
+            return {
+                  type: ResponseType.DETAILSREQUEST,
+                  text: "Please write your question in English."
             }
     }
 

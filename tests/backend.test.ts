@@ -186,6 +186,55 @@ test('строка 8: проверка владения заказом даёт 
   assert.deepEqual(foreignResponse, nonexistentResponse);
 });
 
+test('короткий текст на другом языке просит переформулировать на английском, длинный — эскалируется', async () => {
+  const { UnsupportedLanguageError } = await import('../src/api/gateway/gateway.errors');
+
+  function setupWithLanguageError() {
+    const calls: any[] = [];
+    const gateway = {
+      fixSpelling: async () => { throw new UnsupportedLanguageError('es', 0.96); },
+      getAICategory: async () => { throw new Error('must not classify'); },
+      getAIResponse: async () => { throw new Error('must not generate'); },
+      sendToOperator: async () => { calls.push(['operator']); },
+    };
+    const sessions = {
+      getSession: async () => null,
+      createSession: async () => ({ id: 1, messages: [] }),
+      updateStatus: async (...args: any[]) => { calls.push(['status', ...args]); },
+    };
+    const service = new SupportService(
+      {} as any,
+      sessions as any,
+      gateway as any,
+      { saveMessage: async () => {} } as any,
+      {} as any,
+      fixedThresholdRepository as any,
+    );
+    return { service, calls };
+  }
+
+  const short = setupWithLanguageError();
+  const shortResult = await short.service.handleSupportRequest({ ...valid, message: 'Привет' } as any);
+  assert.equal(shortResult.type, ResponseType.DETAILSREQUEST);
+  assert.ok(!short.calls.some((call) => call[0] === 'operator'));
+
+  const long = setupWithLanguageError();
+  const longResult = await long.service.handleSupportRequest(
+    { ...valid, message: 'Hola, necesito ayuda con mi pedido por favor' } as any,
+  );
+  assert.equal(longResult.type, ResponseType.OPERATOR);
+  assert.ok(long.calls.some((call) => call[0] === 'operator'));
+});
+
+test('cancel_order эскалируется оператору напрямую, без запроса заказа', async () => {
+  const { service, calls } = setup(RequestCategory.cancel_order, 0.9);
+
+  const result = await service.handleSupportRequest({ ...valid, orderId: 1 } as any);
+
+  assert.equal(result.type, ResponseType.OPERATOR);
+  assert.ok(!calls.some((call) => call[0] === 'order'));
+});
+
 test('интент human_agent и лимит сообщений передают диалог оператору', async () => {
   const fixtures = [
     setup(RequestCategory.human_agent, 0.9),

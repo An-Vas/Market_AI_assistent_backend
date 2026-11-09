@@ -10,6 +10,7 @@ import axios from 'axios';
 import 'dotenv/config';
 import { log } from '../common/trace';
 import { classificationConfidence } from '../common/metrics';
+import { UnsupportedLanguageError } from './gateway.errors';
 
 function describeError(error: unknown): string {
     if (axios.isAxiosError(error)) {
@@ -121,6 +122,15 @@ export class GatewayService implements IGatewayService{
             };
 
         } catch (error) {
+            if (
+                axios.isAxiosError(error)
+                && error.response?.status === 422
+                && error.response.data?.error?.code === 'unsupported_language'
+            ) {
+                const { detected_lang, score } = error.response.data.error;
+                log(traceId, 'ML process FAILED', { error: describeError(error), detected_lang, score });
+                throw new UnsupportedLanguageError(detected_lang ?? null, typeof score === 'number' ? score : 0);
+            }
             log(traceId, 'ML process FAILED', { error: describeError(error) });
             throw error;
         }

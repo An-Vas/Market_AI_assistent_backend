@@ -85,3 +85,16 @@ export const NeedOrderDetailsCategories = [
   RequestCategory.return_product_in_store,
   RequestCategory.return_product_online,
 ];
+
+// Интенты, которые описывают действие, а не информацию — бот физически не
+// может выполнить их (нет кода для отмены/изменения заказа или аккаунта),
+// поэтому сразу передаёт оператору, а не пытается сгенерировать ответ.
+export const ActionOnlyCategories = [
+  // ORDER
+  RequestCategory.cancel_order,
+  RequestCategory.change_order,
+  // ACCOUNT
+  RequestCategory.change_account,
+  RequestCategory.close_account,
+  RequestCategory.open_account,
+];
