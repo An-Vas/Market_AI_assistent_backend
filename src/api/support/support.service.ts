@@ -13,6 +13,7 @@ import { NeedOrderDetailsCategories, RequestCategory } from '../common/ml.enums'
 import { IOrderRepository } from '../order/order.repository.interface';
 import { performance } from 'node:perf_hooks';
 import { log } from '../common/trace';
+import { escalationsTotal, supportResponsesTotal } from '../common/metrics';
 
 
 
@@ -99,6 +100,7 @@ export class SupportService implements ISupportService {
         traceId: string,
     ): SupportResponseDto {
         const totalMs = Number((performance.now() - started).toFixed(3));
+        supportResponsesTotal.inc({ type: ResponseType[response.type] });
         log(traceId, 'support response', {
             type: ResponseType[response.type],
             totalMs,
@@ -133,6 +135,7 @@ export class SupportService implements ISupportService {
         reason: string,
     ): Promise<SupportResponseDto>{
         await this.sessionRepository.updateStatus(requestData.sessionId, requestData.userId, SessionStatus.OPERATOR);
+        escalationsTotal.inc({ reason });
         log(traceId, 'escalated to operator', { reason });
         await this.gatewayService.sendToOperator(traceId);
             return {

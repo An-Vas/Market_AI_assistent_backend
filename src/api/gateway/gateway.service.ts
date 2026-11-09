@@ -9,6 +9,7 @@ import {
 import axios from 'axios';
 import 'dotenv/config';
 import { log } from '../common/trace';
+import { classificationConfidence } from '../common/metrics';
 
 function describeError(error: unknown): string {
     if (axios.isAxiosError(error)) {
@@ -77,6 +78,7 @@ export class GatewayService implements IGatewayService{
             }
             const category = RequestCategory[foundIntent as keyof typeof RequestCategory];
             const recognizedCategory = typeof category === 'number' ? category : null;
+            classificationConfidence.observe(confidence);
             log(traceId, 'ML classify ok', {
                 intent: foundIntent,
                 confidence: confidence.toFixed(2),

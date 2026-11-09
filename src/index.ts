@@ -9,7 +9,7 @@ import { SupportController } from './api/support/support.controller';
 import { sequelize } from './database/dbconfig';
 import { BdCongigClass as BdPrepareClass } from './database/dbprepare';
 import { traceIdMiddleware, log } from './api/common/trace';
-import { metricsRouter } from './api/common/metrics';
+import { httpRequestsTotal, metricsRouter } from './api/common/metrics';
 
 
 const app = express();
@@ -25,6 +25,13 @@ const app = express();
   app.use(express.static(path.join(__dirname, '..', 'public')));
   app.use(traceIdMiddleware);
   app.use(metricsRouter);
+  app.use((req, res, next) => {
+    res.on('finish', () => {
+      const route = req.route?.path ?? req.path;
+      httpRequestsTotal.inc({ route, method: req.method, status: res.statusCode });
+    });
+    next();
+  });
 
   const helloController = container.get<SupportController>(TYPES.supportController);
 
