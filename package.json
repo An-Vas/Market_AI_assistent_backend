@@ -6,7 +6,14 @@
     "dev": "tsx src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "test": "tsx --test tests/backend.test.ts tests/database.test.ts tests/controller.test.ts tests/session.test.ts"
+    "test": "tsx --test tests/backend.test.ts tests/database.test.ts tests/controller.test.ts tests/session.test.ts tests/auth.test.ts tests/security.test.ts",
+    "test:redteam": "tsx --test tests/redteam.test.ts",
+    "test:allure": "ALLURE_RESULTS_DIR=allure-results-backend tsx --test --test-reporter spec --test-reporter-destination stdout --test-reporter allure-node-test/reporter --test-reporter-destination stdout tests/backend.test.ts tests/database.test.ts tests/controller.test.ts tests/session.test.ts tests/auth.test.ts tests/security.test.ts",
+    "test:redteam:allure": "ALLURE_RESULTS_DIR=allure-results-redteam tsx --test --test-reporter spec --test-reporter-destination stdout --test-reporter allure-node-test/reporter --test-reporter-destination stdout tests/redteam.test.ts",
+    "report:allure": "npx allure generate allure-results-backend -o allure-report-backend --clean",
+    "report:redteam:allure": "npx allure generate allure-results-redteam -o allure-report-redteam --clean",
+    "open:allure": "npx allure open allure-report-backend",
+    "open:redteam:allure": "npx allure open allure-report-redteam"
   },
   "keywords": [],
   "author": "",
@@ -30,6 +37,9 @@
     "@types/express": "^5.0.6",
     "@types/jsonwebtoken": "^9.0.7",
     "@types/node": "^26.6.3",
+    "allure": "^3.33.0",
+    "allure-js-commons": "^3.14.0",
+    "allure-node-test": "^3.14.0",
     "ts-node": "^10.9.2",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2"

@@ -1,58 +1,60 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import axios from 'axios';
 import { test } from 'node:test';
 import 'reflect-metadata';
+import { OrderRepository } from '../src/api/order/order.repository';
 
-test('SQLite order repository isolates users and binds SQL parameters', async () => {
-  const original = process.cwd();
-  const dir = mkdtempSync(join(tmpdir(), 'market-test-'));
+test('OrderRepository forwards the caller\'s token to the marketplace and maps 404s to null', async () => {
+  const originalGet = axios.get;
+  const previousBase = process.env.MARKETPLACE_BASE_URL;
+  process.env.MARKETPLACE_BASE_URL = 'http://127.0.0.1:54321';
 
-  process.chdir(dir);
-
-  const { sequelize } = await import('../src/database/dbconfig');
-  const { Order } = await import('../src/database/models/order');
-  const { OrderRepository } = await import(
-    '../src/api/order/order.repository'
-  );
+  const calls: Array<[string, unknown]> = [];
 
   try {
-    await sequelize.sync({ force: true });
+    axios.get = (async (url: string, config: unknown) => {
+      calls.push([url, config]);
 
-    await Order.bulkCreate([
-      {
-        id: 1,
-        userId: 5,
-        orderComposition: 'book',
-        status: 'created',
-        deliveryDate: new Date(),
-      },
-      {
-        id: 2,
-        userId: 7,
-        orderComposition: 'lamp',
-        status: 'created',
-        deliveryDate: new Date(),
-      },
-    ]);
+      if (url === 'http://127.0.0.1:54321/api/orders/1') {
+        return { data: { id: 1, orderComposition: 'book', status: 'created', deliveryDate: '2026-01-01' } };
+      }
+
+      if (url === 'http://127.0.0.1:54321/api/orders') {
+        return { data: [{ id: 1, orderComposition: 'book', status: 'created', deliveryDate: '2026-01-01' }] };
+      }
+
+      const notFound: any = new Error('Not Found');
+      notFound.isAxiosError = true;
+      notFound.response = { status: 404 };
+      throw notFound;
+    }) as typeof axios.get;
 
     const repo = new OrderRepository();
 
-    assert.equal((await repo.getOrder(1, 5))?.orderComposition, 'book');
-    assert.equal(await repo.getOrder(1, 7), null);
-    assert.equal(await repo.getOrder(999, 5), null);
-    assert.equal(await repo.getOrder('1 OR 1=1' as any, 5), null);
+    const own = await repo.getOrder(1, 'token-A', 'trace-1');
+    assert.equal(own?.orderComposition, 'book');
+
+    const foreign = await repo.getOrder(2, 'token-A', 'trace-1');
+    assert.equal(foreign, null);
+
+    const nonexistent = await repo.getOrder(999, 'token-A', 'trace-1');
+    assert.equal(nonexistent, null);
 
     assert.deepEqual(
-      (await repo.getOrdersForUser(7)).map((order) => order.orderComposition),
-      ['lamp'],
+      (await repo.getOrdersForUser('token-A', 'trace-1')).map((order) => order.orderComposition),
+      ['book'],
     );
 
-    assert.equal(await Order.count(), 2);
+    assert.deepEqual(calls[0], [
+      'http://127.0.0.1:54321/api/orders/1',
+      { headers: { Authorization: 'Bearer token-A', 'X-Trace-Id': 'trace-1' } },
+    ]);
   } finally {
-    await sequelize.close();
-    process.chdir(original);
-    rmSync(dir, { recursive: true, force: true });
+    axios.get = originalGet;
+    if (previousBase === undefined) {
+      delete process.env.MARKETPLACE_BASE_URL;
+    } else {
+      process.env.MARKETPLACE_BASE_URL = previousBase;
+    }
   }
 });

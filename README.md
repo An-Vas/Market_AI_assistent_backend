@@ -63,6 +63,21 @@ Backend обращается к ML API, работающему на хост-к�
 ```
 Параметр orderId необязательный. Указывать его можно, но учитываться он будет только в категориях где эта информация нужна. Если заказ принадлежит другому пользователю придет снова сообщение "укажите или перепроверьте номер заказа" (на английском).
 
+### Тестирование и отчёты
+
+Есть два набора автотестов и, соответственно, два отдельных Allure-отчёта (третий — у фронтенда, см. README `ai-assistent-frontend`):
+
+| Набор | Запуск без отчёта | Запуск + Allure-результаты | Сборка HTML-отчёта | Открыть отчёт |
+|---|---|---|---|---|
+| Обычные + атакующие проверки на моке модели | `npm test` | `npm run test:allure` | `npm run report:allure` | `npm run open:allure` |
+| Атакующие проверки против реальной LLM (red-team) | `npm run test:redteam` | `npm run test:redteam:allure` | `npm run report:redteam:allure` | `npm run open:redteam:allure` |
+
+Red-team-прогону нужен реально поднятый `ai-assistant` (FastAPI + Ollama + knowledge_db) по адресу из `FASTAPI_HOST` — если он недоступен, тесты сами помечаются skipped, а не падают.
+
+`npm run open:allure` / `open:redteam:allure` поднимают локальный HTTP-сервер и открывают браузер (`Allure is running on http://localhost:XXXXX`). Открыть `index.html` напрямую через `file://` не получится — отчёту нужен HTTP, он подгружает данные через fetch. Отчёт остаётся на диске (`allure-report-backend/`, `allure-report-redteam/`, в `.gitignore`) — `open:*` можно запускать позже сколько угодно раз без повторного прогона тестов, он просто сервит то, что уже сгенерировано.
+
+**Как в отчёте отличить атакующие проверки от обычных:** все 22 атакующие проверки из плана тестирования безопасности названы с префиксом `row N:` (например, `row 4: user B cannot read or write into user A's session via its sessionId`) — кроме проверки на энумерацию заказов, она называется `order ownership check gives identical responses for a foreign order and a non-existent one` (это row 8). В дереве Suites/Packages отчёта они сгруппированы по файлу теста: большинство — в `tests/security.test.ts` (там одна родительская проверка с 10 подпроверками-row'ами), ещё одна — в `tests/backend.test.ts`. Остальные файлы (`auth.test.ts`, `controller.test.ts`, `database.test.ts`, `session.test.ts`, и большая часть `backend.test.ts`) — обычные функциональные тесты, не из списка атак. Быстрее всего — ввести `row` в поиск по тестам в самом отчёте.
+
 ### Trace ID и логи
 
 Каждый запрос получает trace ID — либо из заголовка `X-Trace-Id` (если

@@ -14,6 +14,7 @@ import { IOrderRepository } from '../order/order.repository.interface';
 import { performance } from 'node:perf_hooks';
 import { log } from '../common/trace';
 import { escalationsTotal, supportResponsesTotal } from '../common/metrics';
+import { SessionAccessDeniedError } from './support.errors';
 
 
 
@@ -120,7 +121,11 @@ export class SupportService implements ISupportService {
       let session = await this.sessionRepository.getSession(requestData.sessionId, requestData.userId);
 
         if (!session) {
-            session = await this.sessionRepository.createSession(requestData.sessionId, requestData.userId)
+            try {
+                session = await this.sessionRepository.createSession(requestData.sessionId, requestData.userId)
+            } catch {
+                throw new SessionAccessDeniedError();
+            }
         } else if (session.status == SessionStatus.CLOSED){
             await this.sessionRepository.updateStatus(requestData.sessionId, requestData.userId, SessionStatus.OPEN);
         }

@@ -120,7 +120,7 @@ test('order intent requires an order and checks ownership before generation', as
   const missing = setup(RequestCategory.track_order, 0.9);
 
   assert.equal(
-    (await missing.service.handleSupportRequest({ ...valid } as any)).type,
+    (await missing.service.handleSupportRequest({ ...valid } as any, 'trace-1', 'token-1')).type,
     ResponseType.ORDERINFOREQUEST,
   );
 
@@ -131,14 +131,14 @@ test('order intent requires an order and checks ownership before generation', as
       await foreign.service.handleSupportRequest({
         ...valid,
         orderId: 9,
-      } as any)
+      } as any, 'trace-1', 'token-1')
     ).type,
     ResponseType.ORDERINFOREQUEST,
   );
 
   assert.deepEqual(
     foreign.calls.find((call) => call[0] === 'order'),
-    ['order', 9, 5],
+    ['order', 9, 'token-1', 'trace-1'],
   );
 
   assert.ok(!foreign.calls.some((call) => call[0] === 'generate'));
@@ -154,7 +154,7 @@ test('order intent requires an order and checks ownership before generation', as
       await own.service.handleSupportRequest({
         ...valid,
         orderId: 9,
-      } as any)
+      } as any, 'trace-1', 'token-1')
     ).type,
     ResponseType.ANSWER,
   );
@@ -163,6 +163,22 @@ test('order intent requires an order and checks ownership before generation', as
     own.calls.find((call) => call[0] === 'generate')[3],
     /book/,
   );
+});
+
+test('order ownership check gives identical responses for a foreign order and a non-existent one', async () => {
+  const foreign = setup(RequestCategory.track_order, 0.9);
+  const nonexistent = setup(RequestCategory.track_order, 0.9);
+
+  const foreignResponse = await foreign.service.handleSupportRequest({
+    ...valid,
+    orderId: 9,
+  } as any);
+  const nonexistentResponse = await nonexistent.service.handleSupportRequest({
+    ...valid,
+    orderId: 999999,
+  } as any);
+
+  assert.deepEqual(foreignResponse, nonexistentResponse);
 });
 
 test('human agent and message threshold send to operator', async () => {

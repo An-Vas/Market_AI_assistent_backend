@@ -10,6 +10,7 @@ import { ISessionRepository } from '../session/session.repository.interface';
 import { validate } from 'class-validator';
 import { log } from '../common/trace';
 import { requireSsoAuth } from '../common/auth.middleware';
+import { SessionAccessDeniedError } from './support.errors';
 
 
 @injectable()
@@ -66,6 +67,11 @@ export class SupportController extends BaseController implements ISupportControl
         const answer = await this.supportService.handleSupportRequest(requestData, req.traceId, req.ssoToken);
         res.send(answer);
     } catch (err) {
+      if (err instanceof SessionAccessDeniedError) {
+        log(req.traceId, 'support request REJECTED (session access denied)', { action: 'support_request' });
+        res.status(403).json({ error: 'Session is not available.' });
+        return;
+      }
       next(err);
     }
   }
